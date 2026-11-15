@@ -86,7 +86,7 @@ Output:
 | `--thumb-size PX` | longest edge of a preview (default 512) |
 | `--video-frames N` | extra frames per video beyond the poster (default 3) |
 | `--skip-larger-than` | e.g. `2G` — still indexed, but not opened |
-| `--blur-text-below PT` | blur the text a PDF sets below PT points, keep larger text sharp (default 10) |
+| `--blur-text-below PT` | blur the text a PDF sets below PT points, keep larger text sharp (default 12) |
 | `--blur-pdf` | blur every PDF preview entirely and store no text from one |
 | `--blur-radius PX` | override the blur strength (default scales from `--thumb-size`) |
 | `--only html\|obsidian` | render just one viewer |
@@ -287,8 +287,8 @@ set large:
 So the rule is a font size, and the size is the parameter:
 
 ```bash
-.venv/bin/python -m dldiary all --blur-text-below        # 10pt
-.venv/bin/python -m dldiary all --blur-text-below 12     # hide more
+.venv/bin/python -m dldiary all --blur-text-below        # 12pt
+.venv/bin/python -m dldiary all --blur-text-below 10     # keep more readable
 ```
 
 Text below the threshold is blurred in the preview **and not stored** —
@@ -298,9 +298,26 @@ into the `.webp`, so no sharp copy exists for a viewer, a screenshot or a
 recipient to get at, and only the rectangles holding small text are
 touched, so the page still looks like the page.
 
-The default of 10 was chosen against real tickets: one sets its event name
-at 17pt and another at 10pt, so 10 keeps both. **Check it against your own
-documents** — if a name survives, raise it.
+The default of 12 was measured, not picked. Across 84 real PDFs — tickets,
+invoices, bank statements — counting how many still showed a name or a
+street at each threshold:
+
+| threshold | PDFs leaking a name or street | PDFs keeping a usable title |
+|---|---|---|
+| 10 pt | 19 | 81 |
+| 10.5 pt | 6 | 74 |
+| **12 pt** | **2** | **69** |
+| 14 pt | 2 | 48 |
+
+12 sits on a plateau: going to 14 costs 21 more titles and prevents nothing.
+The two that survived at 12 were CVs, where the name *is* the heading at
+28pt — no size rule reaches those. **Check it against your own documents**;
+if a name survives, raise it.
+
+Document metadata has no font size, so `author`, `subject` and `keywords`
+are dropped whenever any blurring is on. That matters more than it sounds:
+in this corpus the author field held five different people's names and,
+once, a full street address.
 
 Three things it does not cover:
 
@@ -310,7 +327,12 @@ Three things it does not cover:
   page is blurred rather than left readable. The entry records
   `blurred_whole_page`.
 * **Filenames.** `31-10-2026--Ticket-01--28302466111-1.pdf` still shows its
-  own name; nothing here renames your files.
+  own name; nothing here renames your files, and a file called
+  `conference - Yourname.pptx` announces itself.
+* **Anything that is not a PDF.** Word and PowerPoint files carry an author
+  in their own metadata and are not covered by this flag.
+* **Your home directory.** Every entry stores the file's path, so
+  `/Users/yourname/` appears throughout `index.json` and the page.
 
 ### The blunt version
 

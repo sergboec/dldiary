@@ -63,7 +63,8 @@ class PdfExtractor(Extractor):
                 return
 
             item.meta["pages"] = doc.page_count
-            self._read_metadata(item, doc, private=private)
+            self._read_metadata(item, doc,
+                                private=private or bool(below))
 
             text_parts: list[str] = []
             for index in range(min(doc.page_count, MAX_PAGE_PREVIEWS + 1)):
@@ -138,9 +139,14 @@ class PdfExtractor(Extractor):
         meta = doc.metadata or {}
 
         # `author`, `subject`, `keywords` and the document title are
-        # authored content and routinely hold a person's name. `creator`,
-        # `producer` and `format` name the software, and the dates are
-        # structural — those stay, and the dates still feed date resolution.
+        # authored content and routinely hold a person's name. Across 84
+        # real PDFs the author field held "Sergey Boytsov", four other
+        # people's names, and in one case a full street address — so these
+        # go whenever any blurring is on, not only for a whole-page blur.
+        # Document metadata has no font size for a size rule to measure.
+        # `creator`, `producer` and `format` name the software, and the
+        # dates are structural — those stay, and the dates still feed date
+        # resolution.
         keys = ("creator", "producer", "format") if private else (
             "author", "subject", "keywords", "creator", "producer", "format")
         for key in keys:

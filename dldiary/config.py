@@ -12,11 +12,17 @@ from . import __version__
 DEFAULT_INPUT = "./downloads_test"
 DEFAULT_OUTPUT = "."
 
-# Points. Measured on real tickets: names, streets and postcodes sit at
-# 7.6-9pt, while the act, venue, seat, price and date are 10pt and up. A
-# parameter because the right line depends on the document — one of these
-# tickets sets its event name at 10pt and the next at 17pt.
-DEFAULT_SMALL_TEXT_PT = 10.0
+# Points. Measured across 84 real PDFs — tickets, invoices, bank statements
+# — by counting how many still showed a name or a street at each threshold:
+#
+#     10.0pt -> 19 leaked, 81 kept a usable title
+#     10.5pt ->  6 leaked, 74
+#     12.0pt ->  2 leaked, 69      <- the plateau: 11.5 and 12 score alike
+#     14.0pt ->  2 leaked, 48      <- titles fall off a cliff, leaks do not
+#
+# The two that survive at 12 are CVs, where the name *is* the heading at
+# 28pt and 17pt. No size rule reaches those; --blur-pdf does.
+DEFAULT_SMALL_TEXT_PT = 12.0
 
 _SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT]?)B?\s*$", re.I)
 _SIZE_MULT = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
