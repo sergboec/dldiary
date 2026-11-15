@@ -1,0 +1,15 @@
+# Downloads-as-a-Diary — exact pins.
+#
+# Install by hand; the tool never installs anything itself:
+#
+#     python3 -m venv .venv
+#     .venv/bin/pip install -r requirements.txt
+#
+# Every import is guarded. A missing library degrades the file kinds that need
+# it to a generic card and warns once, rather than crashing the run.
+
+pillow==12.3.0      # images (jpeg/png/webp/avif/tiff/gif), thumbnails, text cards
+pymupdf==1.28.2     # PDF page rendering + text extraction + metadata; also SVG/EPUB
+av==17.1.0          # video frames + container metadata, via libav (no ffmpeg CLI)
+xattr==1.3.1        # macOS extended attributes: download date, source app, source URL
+mutagen==1.48.1     # audio tags + embedded cover art

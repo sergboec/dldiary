@@ -1,0 +1,27 @@
+# Local environment
+python/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# The input corpus: real downloads, with real names on them. Kept out of
+# history deliberately — the test suites skip when it is absent, and
+# tests/test_scale.py is synthetic and runs in full either way.
+downloads_test/
+
+# Generated output. All of it is reproducible from a run, and it contains
+# previews of personal files.
+diary/
+diary*.zip
+index.json
+previews/
+html/
+obsidian/
+
+# Editors
+.idea/
+*.swp
+
+# macOS
+.DS_Store
