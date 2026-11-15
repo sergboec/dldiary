@@ -48,9 +48,9 @@ def render(manifest: Manifest, cfg: Config) -> Path:
 def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
     """The view model: only what the page actually draws.
 
-    Deliberately not the manifest. The manifest carries fingerprints, inode
-    numbers, every rejected date candidate and absolute source paths — none
-    of which this page renders, and all of which it used to embed. Emitting
+    Deliberately not the manifest. The manifest carries content hashes,
+    every rejected date candidate and absolute source paths — none of which
+    this page renders, and all of which it used to embed. Emitting
     a projection instead took the page from 1.7 MB to a third of that, and
     keeps a change to the manifest from silently changing the page's weight.
     """
@@ -101,8 +101,6 @@ def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
             row["path"] = item.src_path
         if item.meta:
             row["meta"] = item.meta
-        if item.missing:
-            row["missing"] = True
         if item.error:
             row["error"] = item.error
         items.append(row)
@@ -116,7 +114,6 @@ def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
             "bytesh": human_size(stats["bytes"]),
             "range": stats["date_range"],
             "duplicates": stats["duplicates"],
-            "missing": stats["missing"],
         },
         "byDay": {
             day: bucket["count"]
@@ -370,7 +367,6 @@ button.ghost:hover{background:var(--surface-2)}
   overflow:hidden;word-break:break-word;
 }
 .card .sub{font:11px/1.4 var(--mono);color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.card.is-missing{opacity:.55}
 
 /* lightbox */
 .lightbox{
@@ -488,7 +484,6 @@ function header(){
     bits.push(s.range[0] === s.range[1] ? s.range[0] : s.range[0] + ' – ' + s.range[1]);
   }
   if(s.duplicates) bits.push(s.duplicates + ' duplicate' + (s.duplicates > 1 ? 's' : ''));
-  if(s.missing) bits.push(s.missing + ' no longer on disk');
   document.getElementById('lede').innerHTML = bits.join(' &nbsp;·&nbsp; ');
 }
 
@@ -771,8 +766,7 @@ function dayMark(day, items){
 }
 
 function card(it){
-  var fig = el('figure','card' + (it.missing ? ' is-missing' : '') +
-                       (CONTAIN[it.kind] ? ' fit-contain' : ''));
+  var fig = el('figure','card' + (CONTAIN[it.kind] ? ' fit-contain' : ''));
   fig.style.setProperty('--c', color(it.kind));
   fig.tabIndex = 0;
 
@@ -891,7 +885,6 @@ function paintLightbox(){
   });
   if(m.width && m.height) row('dimensions', m.width + ' × ' + m.height);
   if(it.error) row('error', it.error);
-  if(it.missing) row('missing', 'source file is gone');
   row('file', it.path, it.path ? 'file://' + encodeURI(it.path) : null);
 
   meta.appendChild(dl);

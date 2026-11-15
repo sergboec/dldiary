@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .kinds import kind_for_ext, mime_for_ext
-from .manifest import Fingerprint, Item
+from .manifest import Item
 
 # Noise that is never a diary entry.
 _SKIP_NAMES = {".DS_Store", ".localized", "Icon\r", ".dropbox", "desktop.ini"}
@@ -92,7 +92,6 @@ def scan(input_dir: Path, *, skip_larger_than: int | None = None) -> Iterator[It
             mime=mime_for_ext(ext),
             size=size,
             src_path=str(path),
-            fingerprint=Fingerprint.from_stat(st),
             indexed_at=datetime.now().isoformat(timespec="seconds"),
         )
 

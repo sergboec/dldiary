@@ -41,11 +41,8 @@ MAX_META_VALUE = 500
 MAX_META_KEYS = 40
 MAX_META_LIST = 50
 
-# Date provenance, best first. `manual` means a human edited it and the
-# indexer must never overwrite it.
-DATE_SOURCES = (
-    "manual", "exif", "media", "filename", "quarantine", "birth", "mtime",
-)
+# Date provenance, best first.
+DATE_SOURCES = ("exif", "media", "filename", "quarantine", "birth", "mtime")
 
 
 @dataclass
@@ -58,6 +55,7 @@ class Preview:
     w: int = 0
     h: int = 0
     bytes: int = 0
+    blurred: bool = False     # rendered deliberately unreadable
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -71,40 +69,8 @@ class Preview:
             w=int(d.get("w", 0)),
             h=int(d.get("h", 0)),
             bytes=int(d.get("bytes", 0)),
+            blurred=bool(d.get("blurred", False)),
         )
-
-
-@dataclass
-class Fingerprint:
-    """Cheap identity check, so an unchanged file is never re-processed."""
-
-    size: int = 0
-    mtime_ns: int = 0
-    inode: int = 0
-
-    def matches(self, other: "Fingerprint | None") -> bool:
-        return (
-            other is not None
-            and self.size == other.size
-            and self.mtime_ns == other.mtime_ns
-            and self.inode == other.inode
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any] | None) -> "Fingerprint":
-        d = d or {}
-        return cls(
-            size=int(d.get("size", 0)),
-            mtime_ns=int(d.get("mtime_ns", 0)),
-            inode=int(d.get("inode", 0)),
-        )
-
-    @classmethod
-    def from_stat(cls, st: os.stat_result) -> "Fingerprint":
-        return cls(size=st.st_size, mtime_ns=st.st_mtime_ns, inode=st.st_ino)
 
 
 @dataclass
@@ -131,9 +97,7 @@ class Item:
     meta: dict[str, Any] = field(default_factory=dict)      # kind-specific
 
     content_key: str = ""
-    fingerprint: Fingerprint = field(default_factory=Fingerprint)
     indexed_at: str = ""
-    missing: bool = False               # source file gone; diary entry survives
     error: str | None = None
 
     # -- convenience -------------------------------------------------------
@@ -202,7 +166,7 @@ class Item:
             problems.append("missing name")
         if self.date and self.date_source not in DATE_SOURCES:
             problems.append(f"unknown date_source {self.date_source!r}")
-        if not self.previews and not self.missing:
+        if not self.previews:
             problems.append("no previews")
         for preview in self.previews:
             if preview.role not in PREVIEW_ROLES:
@@ -235,9 +199,7 @@ class Item:
             "previews": [p.to_dict() for p in self.previews],
             "meta": self.meta,
             "content_key": self.content_key,
-            "fingerprint": self.fingerprint.to_dict(),
             "indexed_at": self.indexed_at,
-            "missing": self.missing,
             "error": self.error,
         }
 
@@ -260,9 +222,7 @@ class Item:
             previews=[Preview.from_dict(p) for p in d.get("previews") or []],
             meta=dict(d.get("meta") or {}),
             content_key=d.get("content_key", ""),
-            fingerprint=Fingerprint.from_dict(d.get("fingerprint")),
             indexed_at=d.get("indexed_at", ""),
-            missing=bool(d.get("missing", False)),
             error=d.get("error"),
         )
 
@@ -320,7 +280,6 @@ class Manifest:
             "bytes": sum(i.size for i in self.items),
             "date_range": [days[0], days[-1]] if days else [],
             "duplicates": sum(len(g) - 1 for g in self.duplicate_groups()),
-            "missing": sum(1 for i in self.items if i.missing),
             "errors": sum(1 for i in self.items if i.error),
             "kinds": _count_by(i.kind for i in self.items),
             "apps": _count_by(
@@ -350,7 +309,7 @@ class Manifest:
         if schema > SCHEMA_VERSION:
             raise ValueError(
                 f"index.json is schema {schema}, but this tool understands "
-                f"up to {SCHEMA_VERSION}. Upgrade the tool or use --force."
+                f"up to {SCHEMA_VERSION}. Upgrade the tool, or re-index."
             )
         return cls(
             input=d.get("input", ""),

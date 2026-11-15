@@ -41,7 +41,6 @@ class Config:
     input: Path = field(default_factory=lambda: Path(DEFAULT_INPUT))
     output: Path = field(default_factory=lambda: Path(DEFAULT_OUTPUT))
 
-    force: bool = False
     thumb_size: int = 512
     video_frames: int = 3
     skip_larger_than: int | None = None
@@ -117,8 +116,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     idx = p.add_argument_group("indexing")
-    idx.add_argument("-f", "--force", action="store_true",
-                     help="re-extract everything, ignoring fingerprints")
     idx.add_argument("--thumb-size", type=int, default=512, metavar="PX",
                      help="longest edge of a preview, in pixels (default: 512)")
     idx.add_argument("--video-frames", type=int, default=3, metavar="N",
@@ -152,7 +149,6 @@ def parse_args(argv: list[str] | None = None) -> Config:
         command=args.command,
         input=args.input.expanduser(),
         output=args.output.expanduser(),
-        force=args.force,
         thumb_size=max(64, args.thumb_size),
         video_frames=max(0, args.video_frames),
         skip_larger_than=args.skip_larger_than,

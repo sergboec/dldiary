@@ -8,7 +8,6 @@ visible rather than silent.
 
 Precedence
 ----------
-    manual      a human edited it; never overwritten
     exif        EXIF DateTimeOriginal (photos)
     media       container creation_time (video/audio)
     filename    a date spelled out in the filename
@@ -27,7 +26,7 @@ from typing import Iterable
 from .manifest import Item
 from .scan import birthtime_of
 
-PRECEDENCE = ("manual", "exif", "media", "filename", "quarantine", "birth", "mtime")
+PRECEDENCE = ("exif", "media", "filename", "quarantine", "birth", "mtime")
 
 _MIN_YEAR = 1990
 
@@ -118,11 +117,7 @@ def seed_candidates(item: Item, path: Path) -> None:
 
 
 def resolve(item: Item, *, order: Iterable[str] = PRECEDENCE) -> None:
-    """Pick the anchor date from the collected candidates.
-
-    A `manual` candidate always wins; it is how a human correction survives
-    re-indexing.
-    """
+    """Pick the anchor date from the collected candidates."""
     for source in order:
         value = item.date_candidates.get(source)
         if value:

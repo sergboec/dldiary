@@ -152,7 +152,7 @@ def _check_dates(item: dict, where: str) -> list[Problem]:
     out: list[Problem] = []
     date = item.get("date") or ""
     source = item.get("date_source") or ""
-    if not date and not item.get("missing"):
+    if not date:
         out.append(Problem("warning", where, "no anchor date"))
     elif date and not re.match(r"^\d{4}-\d{2}-\d{2}", date):
         out.append(Problem("error", where, f"date {date!r} is not ISO 8601"))
@@ -187,7 +187,7 @@ def _check_previews(item: dict, where: str, cfg: Config) -> list[Problem]:
     if not isinstance(previews, list):
         return out
 
-    if not previews and not item.get("missing"):
+    if not previews:
         out.append(Problem("warning", where, "no previews"))
 
     for preview in previews:
@@ -276,7 +276,7 @@ def _check_orphan_previews(data: dict, cfg: Config) -> list[Problem]:
     wasted = sum(p.stat().st_size for p in orphans)
     return [Problem("warning", "previews/",
                     f"{len(orphans)} orphaned preview(s), {human_size(wasted)} "
-                    f"— `dldiary index --force` clears them")]
+                    f"— the next index run clears them")]
 
 
 def _check_viewers(data: dict, cfg: Config) -> list[Problem]:

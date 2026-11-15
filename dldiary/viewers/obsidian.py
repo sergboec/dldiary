@@ -6,9 +6,8 @@ holding a wikilink. So a gallery needs one note per item — the notes are a
 generated projection of `index.json`, not the data model, and are rewritten
 on every render.
 
-One thing is read back before overwriting: a `date:` a human edited by hand.
-That correction flows into the manifest as `date_source: manual` and is never
-overwritten again.
+Notes are pure output: the whole folder is rewritten on every render, so
+nothing hand-edited inside it survives.
 
 Layout:
 
@@ -35,7 +34,6 @@ BASE_NAME = "Downloads Diary.base"
 
 # Characters Obsidian will not accept in a note filename.
 _UNSAFE = re.compile(r'[\\/:*?"<>|#^\[\]]+')
-_FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 
 
 def render(manifest: Manifest, cfg: Config) -> Path:
@@ -73,9 +71,9 @@ def _write_item_notes(manifest: Manifest, items_dir: Path,
     written: set[str] = set()
     for item in items:
         name = names[item.id]
-        path = items_dir / name
-        _absorb_manual_date(path, item)
-        path.write_text(_item_note(item, mapping), encoding="utf-8")
+        (items_dir / name).write_text(
+            _item_note(item, mapping), encoding="utf-8"
+        )
         written.add(name)
 
     # A viewer that turns 257 entries into 254 notes has lost data. That
@@ -159,8 +157,6 @@ def _item_note(item: Item, mapping: dict[str, str]) -> str:
                 "height", "author", "artist", "album"):
         if item.meta.get(key) not in (None, ""):
             front.append((key, _yaml_scalar(item.meta[key])))
-    if item.missing:
-        front.append(("missing", "true"))
     front.append(("tags", "[downloads-diary]"))
 
     lines = ["---"]
@@ -249,37 +245,6 @@ def _details_table(item: Item) -> list[str]:
     out = ["| | |", "|---|---|"]
     out += [f"| {label} | {value} |" for label, value in rows]
     return out
-
-
-# -- manual date round-trip -------------------------------------------------
-
-
-def _absorb_manual_date(path: Path, item: Item) -> None:
-    """Carry a hand-edited `date:` back into the item before overwriting."""
-    if not path.exists():
-        return
-    try:
-        head = _FRONTMATTER.match(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError):
-        return
-    if not head:
-        return
-
-    existing = ""
-    for line in head.group(1).split("\n"):
-        if line.startswith("date:"):
-            existing = line[5:].strip().strip("'\"")
-            break
-    if not existing or existing == item.date:
-        return
-
-    try:
-        parsed = datetime.fromisoformat(existing)
-    except ValueError:
-        return
-    item.date = parsed.isoformat(timespec="seconds")
-    item.date_source = "manual"
-    item.date_candidates["manual"] = item.date
 
 
 def _prune_notes(items_dir: Path, keep: set[str]) -> None:

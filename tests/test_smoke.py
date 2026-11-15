@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from dldiary import SCHEMA_VERSION                          # noqa: E402
 from dldiary import dates, manifest as manifest_io          # noqa: E402
 from dldiary.config import Config, human_size, parse_size   # noqa: E402
 from dldiary.extractors.base import looks_like_prose        # noqa: E402
@@ -49,7 +50,7 @@ class CorpusTestCase(unittest.TestCase):
         if not CORPUS.is_dir():
             raise unittest.SkipTest(f"corpus missing: {CORPUS}")
         cls.tmp = Path(tempfile.mkdtemp(prefix="dldiary-test-"))
-        cls.cfg = build(cls.tmp, force=True)
+        cls.cfg = build(cls.tmp)
         cls.manifest, cls.report = index(cls.cfg)
         manifest_io.save(cls.manifest, cls.cfg.manifest_path)
         cls.by_name = {i.name: i for i in cls.manifest.items}
@@ -63,7 +64,7 @@ class TestIndex(CorpusTestCase):
 
     def test_every_file_indexed(self):
         self.assertEqual(len(self.manifest.items), EXPECTED_FILES)
-        self.assertEqual(self.report.extracted, EXPECTED_FILES)
+        self.assertEqual(self.report.scanned, EXPECTED_FILES)
 
     def test_every_item_has_a_date_and_a_preview(self):
         for item in self.manifest.items:
@@ -91,11 +92,11 @@ class TestIndex(CorpusTestCase):
     def test_nothing_written_outside_output(self):
         """The input folder is read-only, and the ZIP is never extracted."""
         before = sorted(p.name for p in CORPUS.iterdir())
-        index(build(self.tmp, force=True))
+        index(build(self.tmp))
         self.assertEqual(sorted(p.name for p in CORPUS.iterdir()), before)
 
     def test_ids_are_stable_across_runs(self):
-        again, _ = index(build(self.tmp, force=True))
+        again, _ = index(build(self.tmp))
         self.assertEqual({i.id for i in again.items},
                          {i.id for i in self.manifest.items})
 
@@ -213,39 +214,43 @@ class TestDates(unittest.TestCase):
         self.assertIsNone(dates.parse_exif_datetime(""))
 
 
-class TestIncremental(CorpusTestCase):
+class TestRepeatability(CorpusTestCase):
+    """The tool is one-shot: a second run rebuilds, it does not accumulate."""
 
-    def test_second_run_reuses_everything(self):
-        cfg = build(self.tmp)                 # no --force
-        again, report = index(cfg)
-        self.assertEqual(report.reused, EXPECTED_FILES)
-        self.assertEqual(report.extracted, 0)
+    def test_second_run_reproduces_the_same_index(self):
+        again, report = index(build(self.tmp))
+        self.assertEqual(report.scanned, EXPECTED_FILES)
         self.assertEqual(len(again.items), EXPECTED_FILES)
+        self.assertEqual({i.id for i in again.items},
+                         {i.id for i in self.manifest.items})
+        self.assertEqual(
+            [(i.id, i.date, i.date_source) for i in again.sorted_items()],
+            [(i.id, i.date, i.date_source) for i in self.manifest.sorted_items()],
+        )
 
-    def test_missing_source_keeps_the_entry(self):
-        """The diary has to outlive the downloads folder."""
-        sandbox = Path(tempfile.mkdtemp(prefix="dldiary-missing-"))
+    def test_vanished_file_leaves_no_entry(self):
+        """Nothing is read back, so the folder is the whole truth."""
+        sandbox = Path(tempfile.mkdtemp(prefix="dldiary-oneshot-"))
         try:
             inbox = sandbox / "in"
             inbox.mkdir()
             shutil.copy2(CORPUS / "server.py", inbox / "server.py")
             shutil.copy2(CORPUS / "tabs.zip", inbox / "tabs.zip")
 
-            cfg = Config(input=inbox, output=sandbox / "out", force=True)
+            cfg = Config(input=inbox, output=sandbox / "out")
             first, _ = index(cfg)
             manifest_io.save(first, cfg.manifest_path)
             self.assertEqual(len(first.items), 2)
+            before = sorted(p.name for p in cfg.previews_dir.glob("*.webp"))
+            self.assertEqual(len(before), 2)
 
             (inbox / "tabs.zip").unlink()
-            cfg = Config(input=inbox, output=sandbox / "out")
-            second, report = index(cfg)
+            second, _ = index(Config(input=inbox, output=sandbox / "out"))
 
-            self.assertEqual(len(second.items), 2)
-            self.assertEqual(report.missing, 1)
-            gone = next(i for i in second.items if i.name == "tabs.zip")
-            self.assertTrue(gone.missing)
-            self.assertTrue(gone.previews)
-            self.assertTrue((cfg.output / gone.previews[0].path).exists())
+            self.assertEqual([i.name for i in second.items], ["server.py"])
+            # and its preview is cleaned up rather than left behind
+            after = sorted(p.name for p in cfg.previews_dir.glob("*.webp"))
+            self.assertEqual(len(after), 1)
         finally:
             shutil.rmtree(sandbox, ignore_errors=True)
 
@@ -262,7 +267,7 @@ class TestManifestShape(CorpusTestCase):
 
     def test_schema_and_aggregates(self):
         data = json.loads(self.cfg.manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["schema"], 1)
+        self.assertEqual(data["schema"], SCHEMA_VERSION)
         self.assertEqual(data["stats"]["items"], EXPECTED_FILES)
 
         self.assertEqual(
