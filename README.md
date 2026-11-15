@@ -86,13 +86,88 @@ Output:
 | `--thumb-size PX` | longest edge of a preview (default 512) |
 | `--video-frames N` | extra frames per video beyond the poster (default 3) |
 | `--skip-larger-than` | e.g. `2G` — still indexed, but not opened |
-| `--blur-pdf` | blur every PDF preview and store no text from one |
+| `--blur-text-below PT` | blur the text a PDF sets below PT points, keep larger text sharp (default 10) |
+| `--blur-pdf` | blur every PDF preview entirely and store no text from one |
 | `--blur-radius PX` | override the blur strength (default scales from `--thumb-size`) |
 | `--only html\|obsidian` | render just one viewer |
 | `--obsidian-grain day` | one note per day instead of one per file |
 | `--inline-assets` | base64 the previews into `diary.html` — one portable file |
 | `-n, --dry-run` | report what would happen, write nothing |
 | `-v, --verbose` | per-file logging |
+
+### Worked examples
+
+**Try it on the sample folder first.** Writes into the current directory, so
+you can see the shape of the output before pointing it at anything real:
+
+```bash
+.venv/bin/python -m dldiary all --input ./downloads_test --output ./sample
+```
+
+**Look before you leap.** Lists what would be indexed and writes nothing —
+worth doing once against a folder with thousands of files in it:
+
+```bash
+.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary --dry-run
+```
+
+**The real run.** A 24 GB folder with a couple of films in it takes about
+half a minute; `--skip-larger-than` indexes the giants as entries but does
+not open them, which is most of the time saved:
+
+```bash
+.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary --skip-larger-than 2G -v
+```
+
+**A diary you can show someone.** Blurs the fine print on every PDF — names,
+addresses, booking references — while leaving the headline readable, so a
+ticket still says what you went to see:
+
+```bash
+.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary --blur-text-below
+```
+
+**Or hide the PDFs completely**, if even the event names are too much:
+
+```bash
+.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary --blur-pdf
+```
+
+**One file you can send.** Base64s the previews into the page, so
+`diary.html` stands alone with no `assets/` folder beside it:
+
+```bash
+.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary --only html --inline-assets
+```
+
+**Re-render without re-reading 24 GB.** After editing a viewer, or to
+switch Obsidian to one note per day, rebuild from the existing manifest:
+
+```bash
+.venv/bin/python -m dldiary render --output ~/diary --obsidian-grain day
+```
+
+**Bigger thumbnails for a photo-heavy folder**, and more frames per video:
+
+```bash
+.venv/bin/python -m dldiary all --input ~/Pictures/inbox --output ~/diary-photos --thumb-size 900 --video-frames 5
+```
+
+**Check an existing diary** without rebuilding anything — the thing to run
+if a page ever looks wrong:
+
+```bash
+.venv/bin/python -m dldiary check --output ~/diary
+```
+
+**A yearly ritual.** The tool is one-shot, so each year gets its own folder
+and the previous one is left alone:
+
+```bash
+.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary-2026 --blur-pdf
+```
+
+Then clear out Downloads — the diary no longer depends on it.
 
 The tool is **one-shot**. There is no reuse cache and no `--force`: every run
 reads every file and builds the manifest from nothing. That matches what it
@@ -195,38 +270,58 @@ anything in them except a corrected `date:`.
 
 ## Blurring PDFs
 
-86 of the 257 entries in a real Downloads folder are PDFs, and they are
-mostly tickets, invoices and boarding passes — a full name, a booking
-reference, a seat number and a scannable barcode, all legible in the
-timeline without clicking anything.
+86 of the 257 entries in a real Downloads folder are PDFs, mostly tickets
+and invoices. The sensitive part of a ticket is not what you went to see —
+it is your name, your street, and the booking and card numbers. On every
+ticket I measured, those are set in small type and the interesting part is
+set large:
 
-```bash
-.venv/bin/python -m dldiary all --blur-pdf
+```
+17.3pt  JETHRO TULL                  10.0pt  Jewgeni Onegin
+11.3pt  TEMPODROM                     9.0pt  Schillertheater, Bismarckstraße 110, 10625 Berlin
+10.5pt  Donnerstag 05.Nov.26          8.0pt  Guten Tag Sergei Boitsov,
+ 9.0pt  Sergei Boitsov                7.0pt  Oper von Pjotr I. Tschaikowski
+ 7.6pt  Möckernstraße 10, 10963 Berlin
 ```
 
-Every preview rendered from a PDF is blurred, and **no text read off the
-page is stored at all** — no summary, no title taken from the first line,
-and no `author`, `subject` or `keywords` from the document metadata. The
-blur is baked into the `.webp`, so no sharp copy exists for a viewer, a
-screenshot or a recipient to get at. `pages`, `producer`, `format` and the
-creation date stay: structural, not personal, and the dates still feed date
-resolution.
+So the rule is a font size, and the size is the parameter:
 
-The radius scales with `--thumb-size` so the effect looks the same at any
-size — about 12 px at the default 512, tuned so that body text and barcodes
-are gone while the page is still recognisable as a ticket. `--blur-radius`
-overrides it.
+```bash
+.venv/bin/python -m dldiary all --blur-text-below        # 10pt
+.venv/bin/python -m dldiary all --blur-text-below 12     # hide more
+```
 
-**What this costs:** free-text search no longer reaches inside PDFs, and
-cards show filenames instead of titles. Run without the flag to get both
-back.
+Text below the threshold is blurred in the preview **and not stored** —
+it is kept out of the summary, the title, `index.json`, the HTML and the
+notes. Text at or above it stays sharp and searchable. The blur is baked
+into the `.webp`, so no sharp copy exists for a viewer, a screenshot or a
+recipient to get at, and only the rectangles holding small text are
+touched, so the page still looks like the page.
 
-**What it does not cover:** filenames. A file called
-`31-10-2026--Ticket-01--28302466111-1.pdf` still displays its own name, and
-nothing here renames your files.
+The default of 10 was chosen against real tickets: one sets its event name
+at 17pt and another at 10pt, so 10 keeps both. **Check it against your own
+documents** — if a name survives, raise it.
 
-`dldiary check` verifies the result — it errors if any preview of a blurred
-kind is unblurred, or if text was stored for one anyway.
+Three things it does not cover:
+
+* **Images.** Barcodes, QR codes, signatures and scanned pages are not
+  text, so a size rule cannot see them. They stay sharp.
+* **PDFs with no text layer.** There is nothing to measure, so the whole
+  page is blurred rather than left readable. The entry records
+  `blurred_whole_page`.
+* **Filenames.** `31-10-2026--Ticket-01--28302466111-1.pdf` still shows its
+  own name; nothing here renames your files.
+
+### The blunt version
+
+`--blur-pdf` blurs every PDF preview end to end and stores no text from one
+at all — no summary, no title, no `author`, `subject` or `keywords`. It
+cannot miss, which the size rule can, and it covers barcodes. `pages`,
+`producer`, `format` and the creation date stay either way: structural, not
+personal, and the dates still feed date resolution.
+
+`dldiary check` errors if any preview of a blurred kind is unblurred, or if
+text was stored for one anyway.
 
 ---
 

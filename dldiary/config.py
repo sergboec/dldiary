@@ -12,6 +12,12 @@ from . import __version__
 DEFAULT_INPUT = "./downloads_test"
 DEFAULT_OUTPUT = "."
 
+# Points. Measured on real tickets: names, streets and postcodes sit at
+# 7.6-9pt, while the act, venue, seat, price and date are 10pt and up. A
+# parameter because the right line depends on the document — one of these
+# tickets sets its event name at 10pt and the next at 17pt.
+DEFAULT_SMALL_TEXT_PT = 10.0
+
 _SIZE_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*([KMGT]?)B?\s*$", re.I)
 _SIZE_MULT = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
 
@@ -50,6 +56,12 @@ class Config:
     # widening the scope later is a one-line change.
     blur_kinds: frozenset[str] = frozenset()
     blur_radius: int | None = None       # None = derive from thumb_size
+
+    # Blur only the text a PDF sets below this many points, leaving larger
+    # text sharp. On a ticket the fine print is the name, the address, the
+    # booking reference and the barcode digits; the event, the venue and
+    # the price are set larger and stay readable.
+    blur_text_below: float | None = None
 
     only: str = "both"                   # both | html | obsidian
     obsidian_grain: str = "item"         # item | day
@@ -158,6 +170,15 @@ def build_parser() -> argparse.ArgumentParser:
              "in the timeline; PDF contents stop being searchable",
     )
     privacy.add_argument(
+        "--blur-text-below", type=float, nargs="?", const=DEFAULT_SMALL_TEXT_PT,
+        default=None, metavar="PT",
+        help=f"blur only the text a PDF sets below this many points, and keep "
+             f"no text from below it either (default {DEFAULT_SMALL_TEXT_PT} "
+             f"when the flag is given on its own). On a ticket that is the "
+             f"name, address, booking reference and barcode digits; the "
+             f"event, venue and price are set larger and stay readable",
+    )
+    privacy.add_argument(
         "--blur-radius", type=int, default=None, metavar="PX",
         help="Gaussian blur radius in pixels (default: scaled from "
              "--thumb-size, about 12 at the default 512)",
@@ -191,6 +212,7 @@ def parse_args(argv: list[str] | None = None) -> Config:
         skip_larger_than=args.skip_larger_than,
         blur_kinds=frozenset({"pdf"}) if args.blur_pdf else frozenset(),
         blur_radius=args.blur_radius,
+        blur_text_below=args.blur_text_below,
         only=args.only,
         obsidian_grain=args.obsidian_grain,
         inline_assets=args.inline_assets,

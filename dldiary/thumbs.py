@@ -155,6 +155,32 @@ def save_bytes(
         return None
 
 
+def blur_regions(img: Image.Image, rects: list[tuple[float, float, float, float]],
+                 radius: float, pad: float = 1.5) -> Image.Image:
+    """Blur only the given rectangles, leaving the rest of the image sharp.
+
+    Done as one blur of the whole image composited through a mask, rather
+    than cropping and pasting each rectangle: a single filter pass, and no
+    visible seam where one rectangle ends and the next begins. The mask is
+    itself softened slightly so a blurred patch fades into the page instead
+    of sitting in a hard-edged box.
+    """
+    if not rects or radius <= 0:
+        return img
+
+    img = img.convert("RGB")
+    mask = Image.new("L", img.size, 0)
+    draw = ImageDraw.Draw(mask)
+    for x0, y0, x1, y1 in rects:
+        draw.rectangle(
+            [x0 - pad, y0 - pad, x1 + pad, y1 + pad], fill=255
+        )
+    mask = mask.filter(ImageFilter.GaussianBlur(pad))
+
+    return Image.composite(img.filter(ImageFilter.GaussianBlur(radius)),
+                           img, mask)
+
+
 def open_oriented(path: Path) -> Image.Image:
     """Open an image and apply its EXIF orientation.
 

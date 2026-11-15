@@ -292,6 +292,112 @@ class TestBlur(unittest.TestCase):
                                 ).blur_radius_for("pdf"), 30.0)
 
 
+class TestBlurSmallText(unittest.TestCase):
+    """`--blur-text-below`: hide the fine print, keep the headline."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not CORPUS.is_dir():
+            raise unittest.SkipTest(f"corpus missing: {CORPUS}")
+        cls.tmp = Path(tempfile.mkdtemp(prefix="dldiary-small-"))
+        cls.cfg = build(cls.tmp, blur_text_below=10.0)
+        cls.manifest, _ = index(cls.cfg)
+        manifest_io.save(cls.manifest, cls.cfg.manifest_path)
+        cls.by_name = {i.name: i for i in cls.manifest.items}
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_large_text_survives(self):
+        """The point of the feature: the event is still readable."""
+        jethro = self.by_name["ticketdirect-1.pdf"]
+        self.assertEqual(jethro.title, "JETHRO TULL")
+        self.assertIn("The Curiosity Tour", jethro.summary)
+        self.assertIn("TEMPODROM", jethro.summary)
+
+        onegin = self.by_name["31-10-2026--Ticket-01--28302466111-1.pdf"]
+        self.assertEqual(onegin.title, "Jewgeni Onegin")
+
+    def test_small_text_is_not_stored(self):
+        """Names and addresses are set small on both of these tickets."""
+        leaks = ("Boitsov", "Möckernstraße", "Bismarckstraße",
+                 "10963", "10625", "Helene-Jacobs")
+        for item in self.manifest.items:
+            if item.kind != "pdf":
+                continue
+            haystack = f"{item.title}\n{item.summary}\n{item.meta}"
+            for leak in leaks:
+                with self.subTest(item=item.name, leak=leak):
+                    self.assertNotIn(leak, haystack)
+
+    def test_nothing_small_reaches_the_rendered_output(self):
+        obsidian_viewer.render(self.manifest, self.cfg)
+        html_viewer.render(self.manifest, self.cfg)
+        for path in self.cfg.output.rglob("*"):
+            if not path.is_file() or path.suffix == ".webp":
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for leak in ("Boitsov", "Bismarckstraße", "Möckernstraße"):
+                with self.subTest(path=path.name, leak=leak):
+                    self.assertNotIn(leak, text)
+
+    def test_barcode_glyphs_do_not_survive_as_text(self):
+        """Barcode fonts draw large, so a size filter alone keeps them."""
+        for item in self.manifest.items:
+            if item.kind == "pdf":
+                with self.subTest(item.name):
+                    self.assertNotIn("Ë*Æ", item.summary)
+                    self.assertNotIn("Ë*Æ", item.title)
+
+    def test_previews_are_marked_and_partly_sharp(self):
+        """Partly: a whole-page blur would defeat the purpose."""
+        sharp = Path(tempfile.mkdtemp(prefix="dldiary-ref-"))
+        try:
+            ref_cfg = build(sharp)
+            ref, _ = index(ref_cfg)
+            ref_by_name = {i.name: i for i in ref.items}
+
+            for item in self.manifest.items:
+                if item.kind != "pdf":
+                    continue
+                with self.subTest(item.name):
+                    self.assertTrue(all(p.blurred for p in item.previews))
+                    before = _edge_energy(
+                        ref_cfg.output / ref_by_name[item.name].previews[0].path)
+                    after = _edge_energy(
+                        self.cfg.output / item.previews[0].path)
+                    # Detail is lost, but nowhere near a whole-page blur,
+                    # which lands around a third of sharp.
+                    self.assertLess(after, before)
+                    self.assertGreater(
+                        after, before * 0.45,
+                        "selective blur destroyed as much as a full blur — "
+                        "is the size threshold catching everything?",
+                    )
+        finally:
+            shutil.rmtree(sharp, ignore_errors=True)
+
+    def test_other_kinds_are_untouched(self):
+        for item in self.manifest.items:
+            if item.kind == "pdf":
+                continue
+            with self.subTest(item.name):
+                self.assertFalse(any(p.blurred for p in item.previews))
+
+    def test_threshold_is_respected(self):
+        """A threshold above everything on the page blurs the lot."""
+        tmp = Path(tempfile.mkdtemp(prefix="dldiary-high-"))
+        try:
+            manifest, _ = index(build(tmp, blur_text_below=99.0))
+            for item in manifest.items:
+                if item.kind == "pdf":
+                    with self.subTest(item.name):
+                        self.assertEqual(item.summary, "")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 def _edge_energy(path: Path) -> float:
     """Stddev after an edge filter: high for crisp text, low for a blur."""
     from PIL import Image, ImageFilter, ImageStat
