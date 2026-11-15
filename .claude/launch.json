@@ -4,7 +4,7 @@
     {
       "name": "diary",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8411", "--directory", "diary/html"],
+      "runtimeArgs": ["-m", "http.server", "8411", "--directory", "diary2/html"],
       "port": 8411
     }
   ]

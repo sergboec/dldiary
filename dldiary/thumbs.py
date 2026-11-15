@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from .manifest import Item, Preview
 
@@ -105,10 +105,19 @@ def save(
     role: str = "poster",
     seq: int = 0,
     max_px: int = 512,
+    blur: float = 0.0,
 ) -> Preview:
-    """Fit, encode and register one preview. Returns the manifest entry."""
+    """Fit, encode and register one preview. Returns the manifest entry.
+
+    `blur` is applied *after* the resize, so the radius is in final pixels
+    and the filter runs over a thumbnail rather than a full page render.
+    It is baked into the file on purpose: there is no sharp copy anywhere
+    for a viewer, a screenshot or a recipient to get at.
+    """
     img = _flatten(img)
     img.thumbnail((max_px, max_px), Image.Resampling.LANCZOS)
+    if blur > 0:
+        img = img.filter(ImageFilter.GaussianBlur(blur))
 
     name = f"{item.id}-{role[0]}{seq}.webp"
     previews_dir.mkdir(parents=True, exist_ok=True)
@@ -118,6 +127,7 @@ def save(
     preview = Preview(
         role=role, seq=seq, path=f"previews/{name}",
         w=img.width, h=img.height, bytes=out.stat().st_size,
+        blurred=blur > 0,
     )
     item.add_preview(preview)
     return preview
@@ -131,6 +141,7 @@ def save_bytes(
     role: str = "cover",
     seq: int = 0,
     max_px: int = 512,
+    blur: float = 0.0,
 ) -> Preview | None:
     """Same, for an image already embedded in a file (cover art, docProps)."""
     import io
@@ -138,7 +149,8 @@ def save_bytes(
     try:
         with Image.open(io.BytesIO(data)) as img:
             img.load()
-            return save(img, item, previews_dir, role=role, seq=seq, max_px=max_px)
+            return save(img, item, previews_dir, role=role, seq=seq,
+                        max_px=max_px, blur=blur)
     except Exception:
         return None
 

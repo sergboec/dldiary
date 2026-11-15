@@ -45,6 +45,12 @@ class Config:
     video_frames: int = 3
     skip_larger_than: int | None = None
 
+    # Kinds whose previews are rendered deliberately unreadable, and whose
+    # extracted text is not stored at all. A set rather than a boolean so
+    # widening the scope later is a one-line change.
+    blur_kinds: frozenset[str] = frozenset()
+    blur_radius: int | None = None       # None = derive from thumb_size
+
     only: str = "both"                   # both | html | obsidian
     obsidian_grain: str = "item"         # item | day
     inline_assets: bool = False
@@ -69,6 +75,24 @@ class Config:
     @property
     def html_dir(self) -> Path:
         return self.output / "html"
+
+    # -- blur policy -------------------------------------------------------
+
+    def blurs(self, kind: str) -> bool:
+        return kind in self.blur_kinds
+
+    def blur_radius_for(self, kind: str) -> float:
+        """Gaussian radius in final pixels, or 0 when this kind is sharp.
+
+        Scaled off the thumbnail size so the effect looks the same whatever
+        `--thumb-size` is: a fixed radius that erases text at 512 px would
+        barely smudge it at 1024.
+        """
+        if not self.blurs(kind):
+            return 0.0
+        if self.blur_radius is not None:
+            return float(self.blur_radius)
+        return float(max(4, self.thumb_size // 42))
 
     @property
     def wants_html(self) -> bool:
@@ -126,6 +150,19 @@ def build_parser() -> argparse.ArgumentParser:
                      help="skip extraction for files above this size, e.g. 2G; "
                           "they are still indexed, with a generic card")
 
+    privacy = p.add_argument_group("privacy")
+    privacy.add_argument(
+        "--blur-pdf", action="store_true",
+        help="blur every preview rendered from a PDF, and store no text "
+             "extracted from one. Tickets and invoices stop being readable "
+             "in the timeline; PDF contents stop being searchable",
+    )
+    privacy.add_argument(
+        "--blur-radius", type=int, default=None, metavar="PX",
+        help="Gaussian blur radius in pixels (default: scaled from "
+             "--thumb-size, about 12 at the default 512)",
+    )
+
     out = p.add_argument_group("viewers")
     out.add_argument("--only", choices=("both", "html", "obsidian"), default="both",
                      help="which viewers to render (default: both)")
@@ -152,6 +189,8 @@ def parse_args(argv: list[str] | None = None) -> Config:
         thumb_size=max(64, args.thumb_size),
         video_frames=max(0, args.video_frames),
         skip_larger_than=args.skip_larger_than,
+        blur_kinds=frozenset({"pdf"}) if args.blur_pdf else frozenset(),
+        blur_radius=args.blur_radius,
         only=args.only,
         obsidian_grain=args.obsidian_grain,
         inline_assets=args.inline_assets,

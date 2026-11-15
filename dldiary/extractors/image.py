@@ -53,8 +53,7 @@ class ImageExtractor(Extractor):
             if getattr(img, "n_frames", 1) > 1:
                 item.meta["frames"] = img.n_frames  # animated GIF/WebP
             self._read_exif(item, path)
-            thumbs.save(img, item, ctx.previews_dir, role="poster", seq=0,
-                        max_px=ctx.thumb_size)
+            ctx.save_preview(img, item, role="poster", seq=0)
 
     # -- EXIF ---------------------------------------------------------------
 
@@ -147,8 +146,7 @@ class ImageExtractor(Extractor):
             zoom = ctx.thumb_size / max(page.rect.width, page.rect.height, 1)
             pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
             img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-            thumbs.save(img, item, ctx.previews_dir, role="poster", seq=0,
-                        max_px=ctx.thumb_size)
+            ctx.save_preview(img, item, role="poster", seq=0)
 
 
 def _simplify(value):

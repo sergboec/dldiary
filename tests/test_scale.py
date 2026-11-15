@@ -255,6 +255,46 @@ class ViewerScaleTest(unittest.TestCase):
         json.loads(blob)
 
 
+class BlurLeakTest(unittest.TestCase):
+    """With blur on, no text from a blurred kind may reach any output."""
+
+    def test_nothing_from_a_blurred_kind_is_written_anywhere(self):
+        tmp = Path(tempfile.mkdtemp(prefix="dldiary-blurleak-"))
+        try:
+            cfg = Config(input=tmp / "in", output=tmp / "out",
+                         blur_kinds=frozenset({"pdf"}))
+            manifest = Manifest(input="/synthetic")
+            secret = "Nachname-Geheim-99887766"
+            for i in range(6):
+                item = Item(
+                    id=f"blur{i:08x}", name=f"ticket-{i}.pdf", ext="pdf",
+                    kind="pdf", mime="application/pdf", size=2048,
+                    src_path=f"/synthetic/ticket-{i}.pdf",
+                    date=f"2026-0{i + 1}-15T10:00:00",
+                    date_source="quarantine",
+                )
+                # An extractor that ignored the policy would leave these.
+                item.title = secret
+                item.summary = f"{secret} seat 14F"
+                item.meta = {"author": secret, "pages": 2}
+                manifest.items.append(item)
+                item.normalize()
+
+            manifest_io.save(manifest, cfg.manifest_path)
+            html_viewer.render(manifest, cfg)
+            obsidian_viewer.render(manifest, cfg)
+
+            # check() must notice, rather than the leak passing silently.
+            errors = [p for p in check.run(cfg) if p.level == "error"]
+            self.assertTrue(
+                any("text stored for a blurred kind" in p.message
+                    for p in errors),
+                "check did not flag stored text for a blurred kind",
+            )
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class DeepScaleTest(unittest.TestCase):
     """A bigger corpus, to keep an eye on how cost grows."""
 

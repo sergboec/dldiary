@@ -81,9 +81,8 @@ class OfficeExtractor(Extractor):
                 data = zf.read(candidate)
             except (KeyError, zipfile.BadZipFile, OSError):
                 continue
-            preview = thumbs.save_bytes(
-                data, item, ctx.previews_dir, role="poster", seq=0,
-                max_px=ctx.thumb_size,
+            preview = ctx.save_preview_bytes(
+                data, item, role="poster", seq=0
             )
             if preview:
                 item.meta["embedded_thumbnail"] = True
@@ -144,8 +143,7 @@ class OfficeExtractor(Extractor):
     def _card(self, item: Item, ctx: Context, lines: list[str]) -> None:
         img = thumbs.card_for_item(item, lines=lines or None,
                                    size=ctx.thumb_size, dense=True)
-        thumbs.save(img, item, ctx.previews_dir, role="card", seq=0,
-                    max_px=ctx.thumb_size)
+        ctx.save_preview(img, item, role="card", seq=0)
 
 
 def _xml_to_text(data: bytes) -> str:

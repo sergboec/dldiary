@@ -50,6 +50,47 @@ class Context:
     def thumb_size(self) -> int:
         return self.cfg.thumb_size
 
+    # -- the one way to write a preview ------------------------------------
+
+    def save_preview(self, img, item: Item, *, role: str = "poster",
+                     seq: int = 0):
+        """Write one preview for `item`, applying the run's policy.
+
+        Every extractor goes through here rather than calling `thumbs.save`
+        directly, so no extractor can forget to blur a kind that is supposed
+        to be blurred. A policy you have to remember to apply in thirteen
+        places is not a policy — the same reason the manifest sanitizes on
+        write instead of trusting its callers.
+        """
+        from .. import thumbs
+
+        return thumbs.save(
+            img, item, self.previews_dir,
+            role=role, seq=seq,
+            max_px=self.thumb_size,
+            blur=self.cfg.blur_radius_for(item.kind),
+        )
+
+    def save_preview_bytes(self, data: bytes, item: Item, *,
+                           role: str = "cover", seq: int = 0):
+        """Same, for an image already embedded in the source file."""
+        from .. import thumbs
+
+        return thumbs.save_bytes(
+            data, item, self.previews_dir,
+            role=role, seq=seq,
+            max_px=self.thumb_size,
+            blur=self.cfg.blur_radius_for(item.kind),
+        )
+
+    def suppress_text(self, item: Item) -> bool:
+        """True when this kind's extracted text must not be stored.
+
+        Blurring the page render while the manifest still carries the name
+        and booking reference off that same page would only look private.
+        """
+        return self.cfg.blurs(item.kind)
+
     def warn_once(self, key: str, message: str) -> None:
         """Report a condition that will repeat, exactly once per run."""
         if key not in self.warned:
@@ -195,5 +236,4 @@ def _ensure_preview(item: Item, ctx: Context, note: str | None = None) -> None:
         return
     lines = [t for t in (note, item.error) if t]
     img = thumbs.card_for_item(item, lines=lines or None, size=ctx.thumb_size)
-    thumbs.save(img, item, ctx.previews_dir, role="card", seq=0,
-                max_px=ctx.thumb_size)
+    ctx.save_preview(img, item, role="card", seq=0)

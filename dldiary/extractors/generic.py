@@ -65,5 +65,4 @@ class GenericExtractor(Extractor):
             lines.append(f"from {item.source['domain']}")
 
         img = thumbs.card_for_item(item, lines=lines, size=ctx.thumb_size)
-        thumbs.save(img, item, ctx.previews_dir, role="card", seq=0,
-                    max_px=ctx.thumb_size)
+        ctx.save_preview(img, item, role="card", seq=0)

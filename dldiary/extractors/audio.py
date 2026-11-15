@@ -95,8 +95,7 @@ class AudioExtractor(Extractor):
 
     def _cover(self, item: Item, audio, ctx: Context) -> bool:
         for data in _cover_candidates(audio):
-            if thumbs.save_bytes(data, item, ctx.previews_dir, role="cover",
-                                 seq=0, max_px=ctx.thumb_size):
+            if ctx.save_preview_bytes(data, item, role="cover", seq=0):
                 item.meta["embedded_cover"] = True
                 return True
         return False
@@ -110,8 +109,7 @@ class AudioExtractor(Extractor):
                 lines.append(f"{label:<10} {value}")
         img = thumbs.card_for_item(item, lines=lines or None,
                                    size=ctx.thumb_size)
-        thumbs.save(img, item, ctx.previews_dir, role="card", seq=0,
-                    max_px=ctx.thumb_size)
+        ctx.save_preview(img, item, role="card", seq=0)
 
 
 def _cover_candidates(audio):

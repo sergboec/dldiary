@@ -71,7 +71,10 @@ def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
         for preview in item.previews:
             src = resolve(preview.path)
             if src:
-                previews.append({"src": src, "role": preview.role})
+                shot = {"src": src, "role": preview.role}
+                if preview.blurred:
+                    shot["blurred"] = True
+                previews.append(shot)
 
         row: dict = {
             "id": item.id,
@@ -103,6 +106,8 @@ def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
             row["meta"] = item.meta
         if item.error:
             row["error"] = item.error
+        if any(p.blurred for p in item.previews):
+            row["blurred"] = True
         items.append(row)
 
     stats = manifest.build_stats()
@@ -352,6 +357,11 @@ button.ghost:hover{background:var(--surface-2)}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 /* documents are the wrong shape for a crop: a cropped page is a white band */
 .card.fit-contain .thumb img{object-fit:contain}
+.privacy{
+  position:absolute;right:7px;top:7px;font:600 9px/1 var(--mono);
+  letter-spacing:.07em;padding:4px 6px;border-radius:4px;
+  background:rgba(0,0,0,.6);color:#cfd4dc;
+}
 .badge{
   position:absolute;left:7px;top:7px;font:600 10px/1 var(--mono);letter-spacing:.06em;
   text-transform:uppercase;padding:4px 6px;border-radius:4px;background:var(--c);color:#fff;
@@ -780,6 +790,7 @@ function card(it){
     thumb.appendChild(img);
   }
   thumb.appendChild(el('span','badge', it.ext || it.kind));
+  if(it.blurred) thumb.appendChild(el('span','privacy','BLURRED'));
   var corner = cornerLabel(it);
   if(corner) thumb.appendChild(el('span','pages', corner));
   fig.appendChild(thumb);
@@ -884,6 +895,7 @@ function paintLightbox(){
     row(k.replace(/_human$/,'').replace(/_/g,' '), String(v));
   });
   if(m.width && m.height) row('dimensions', m.width + ' × ' + m.height);
+  if(it.blurred) row('privacy', 'preview blurred, text not stored');
   if(it.error) row('error', it.error);
   row('file', it.path, it.path ? 'file://' + encodeURI(it.path) : null);
 

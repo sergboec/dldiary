@@ -45,15 +45,23 @@ class PdfExtractor(Extractor):
         if Image is None:
             raise MissingDependency("pillow", "pillow==12.3.0")
 
+        # When the previews are being blurred, nothing read off the page may
+        # be kept. The summary and the title both come from the same text
+        # the blur is there to hide — "Jewgeni Onegin" and "Sergei Boitsov"
+        # are first lines lifted straight off these tickets — so storing
+        # them would make the blur decorative.
+        private = ctx.suppress_text(item)
+
         with pymupdf.open(path) as doc:
             if doc.needs_pass:
                 # Encrypted: no text, no render. Still a diary entry.
                 item.meta["encrypted"] = True
-                item.summary = "Password-protected document."
+                if not private:
+                    item.summary = "Password-protected document."
                 return
 
             item.meta["pages"] = doc.page_count
-            self._read_metadata(item, doc)
+            self._read_metadata(item, doc, private=private)
 
             text_parts: list[str] = []
             for index in range(min(doc.page_count, MAX_PAGE_PREVIEWS + 1)):
@@ -63,10 +71,16 @@ class PdfExtractor(Extractor):
                     item.meta["page_height"] = round(page.rect.height)
                 self._render(item, page, ctx,
                              role="poster" if index == 0 else "page", seq=index)
+                if private:
+                    continue
                 try:
                     text_parts.append(page.get_text())
                 except Exception:
                     pass
+
+            if private:
+                item.meta["text_suppressed"] = True
+                return
 
             body = "\n".join(text_parts)
             if not body.strip():
@@ -87,13 +101,18 @@ class PdfExtractor(Extractor):
         zoom = min(ctx.thumb_size / longest, 4.0)
         pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-        thumbs.save(img, item, ctx.previews_dir, role=role, seq=seq,
-                    max_px=ctx.thumb_size)
+        ctx.save_preview(img, item, role=role, seq=seq)
 
-    def _read_metadata(self, item: Item, doc) -> None:
+    def _read_metadata(self, item: Item, doc, *, private: bool = False) -> None:
         meta = doc.metadata or {}
-        for key in ("author", "subject", "keywords", "creator", "producer",
-                    "format"):
+
+        # `author`, `subject`, `keywords` and the document title are
+        # authored content and routinely hold a person's name. `creator`,
+        # `producer` and `format` name the software, and the dates are
+        # structural — those stay, and the dates still feed date resolution.
+        keys = ("creator", "producer", "format") if private else (
+            "author", "subject", "keywords", "creator", "producer", "format")
+        for key in keys:
             value = (meta.get(key) or "").strip()
             if value:
                 item.meta[key] = value
@@ -105,7 +124,7 @@ class PdfExtractor(Extractor):
                 item.date_candidates.setdefault(source, parsed)
 
         title = (meta.get("title") or "").strip()
-        if title and not _is_junk_title(title):
+        if title and not private and not _is_junk_title(title):
             item.title = title
 
     @staticmethod

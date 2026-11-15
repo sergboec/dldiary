@@ -26,7 +26,10 @@ sys.path.insert(0, str(ROOT))
 from dldiary import SCHEMA_VERSION                          # noqa: E402
 from dldiary import dates, manifest as manifest_io          # noqa: E402
 from dldiary.config import Config, human_size, parse_size   # noqa: E402
-from dldiary.extractors.base import looks_like_prose        # noqa: E402
+from dldiary.extractors.base import (                       # noqa: E402
+    looks_like_prose, title_from_name,
+)
+from dldiary import check                                   # noqa: E402
 from dldiary.indexer import index                           # noqa: E402
 from dldiary.provenance import domain_of                    # noqa: E402
 from dldiary.scan import scan                               # noqa: E402
@@ -177,6 +180,125 @@ class TestExtractors(CorpusTestCase):
         self.assertEqual(item.meta["encoding"], "utf-8")
         self.assertTrue(item.title)
         self.assertNotEqual(item.title, item.name)
+
+
+class TestBlur(unittest.TestCase):
+    """`--blur-pdf`: unreadable previews, and no text kept from the page."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not CORPUS.is_dir():
+            raise unittest.SkipTest(f"corpus missing: {CORPUS}")
+        cls.tmp = Path(tempfile.mkdtemp(prefix="dldiary-blur-"))
+        cls.cfg = build(cls.tmp, blur_kinds=frozenset({"pdf"}))
+        cls.manifest, _ = index(cls.cfg)
+        manifest_io.save(cls.manifest, cls.cfg.manifest_path)
+        cls.pdfs = [i for i in cls.manifest.items if i.kind == "pdf"]
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_corpus_has_pdfs_to_blur(self):
+        self.assertEqual(len(self.pdfs), 3)
+
+    def test_previews_are_marked_and_actually_blurred(self):
+        """Measure it, rather than trusting the flag that requested it."""
+        sharp = Path(tempfile.mkdtemp(prefix="dldiary-sharp-"))
+        try:
+            plain_cfg = build(sharp)
+            plain, _ = index(plain_cfg)
+            plain_by_name = {i.name: i for i in plain.items}
+
+            for item in self.pdfs:
+                with self.subTest(item.name):
+                    self.assertTrue(all(p.blurred for p in item.previews))
+                    before = _edge_energy(
+                        plain_cfg.output / plain_by_name[item.name].previews[0].path)
+                    after = _edge_energy(
+                        self.cfg.output / item.previews[0].path)
+                    # A preview that was not blurred scores ~1.0 here.
+                    # Radius 12 measures about 0.33 on these tickets: the
+                    # residue is page-scale structure (margins, the colour
+                    # band), not text.
+                    self.assertLess(
+                        after, before * 0.4,
+                        f"edge energy {after:.1f} vs {before:.1f} "
+                        f"({after / before:.0%} of sharp) — the blur did not "
+                        f"meaningfully destroy detail",
+                    )
+        finally:
+            shutil.rmtree(sharp, ignore_errors=True)
+
+    def test_no_text_is_stored(self):
+        for item in self.pdfs:
+            with self.subTest(item.name):
+                self.assertEqual(item.summary, "")
+                self.assertTrue(item.meta.get("text_suppressed"))
+                self.assertEqual(item.title, title_from_name(item.name))
+                for leaked in ("author", "subject", "keywords"):
+                    self.assertNotIn(leaked, item.meta)
+                # structural metadata is still useful and not personal
+                self.assertIn("pages", item.meta)
+
+    def test_nothing_personal_reaches_the_output(self):
+        obsidian_viewer.render(self.manifest, self.cfg)
+        html_viewer.render(self.manifest, self.cfg)
+
+        needles = ("Boitsov", "Onegin", "838944373", "JETHRO")
+        for path in self.cfg.output.rglob("*"):
+            if not path.is_file() or path.suffix == ".webp":
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for needle in needles:
+                with self.subTest(path=path.name, needle=needle):
+                    self.assertNotIn(needle, text)
+
+    def test_other_kinds_are_untouched(self):
+        for item in self.manifest.items:
+            if item.kind == "pdf":
+                continue
+            with self.subTest(item.name):
+                self.assertFalse(any(p.blurred for p in item.previews))
+                self.assertNotIn("text_suppressed", item.meta)
+
+    def test_check_passes_and_catches_a_sharp_preview(self):
+        self.assertEqual(
+            [str(p) for p in check.run(self.cfg) if p.level == "error"], []
+        )
+        # Simulate an extractor that bypassed Context.save_preview.
+        data = json.loads(self.cfg.manifest_path.read_text(encoding="utf-8"))
+        for entry in data["items"]:
+            if entry["kind"] == "pdf":
+                entry["previews"][0]["blurred"] = False
+                break
+        self.cfg.manifest_path.write_text(json.dumps(data), encoding="utf-8")
+        try:
+            errors = [p for p in check.run(self.cfg) if p.level == "error"]
+            self.assertTrue(any("not blurred" in p.message for p in errors))
+        finally:
+            manifest_io.save(self.manifest, self.cfg.manifest_path)
+
+    def test_radius_scales_with_thumbnail_size(self):
+        self.assertEqual(Config(thumb_size=512,
+                                blur_kinds=frozenset({"pdf"})
+                                ).blur_radius_for("pdf"), 12.0)
+        self.assertEqual(Config(thumb_size=1024,
+                                blur_kinds=frozenset({"pdf"})
+                                ).blur_radius_for("pdf"), 24.0)
+        self.assertEqual(Config(thumb_size=512).blur_radius_for("pdf"), 0.0)
+        self.assertEqual(Config(thumb_size=512, blur_radius=30,
+                                blur_kinds=frozenset({"pdf"})
+                                ).blur_radius_for("pdf"), 30.0)
+
+
+def _edge_energy(path: Path) -> float:
+    """Stddev after an edge filter: high for crisp text, low for a blur."""
+    from PIL import Image, ImageFilter, ImageStat
+
+    with Image.open(path) as img:
+        edges = img.convert("L").filter(ImageFilter.FIND_EDGES)
+        return ImageStat.Stat(edges).stddev[0]
 
 
 class TestDates(unittest.TestCase):

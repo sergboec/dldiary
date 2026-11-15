@@ -72,8 +72,7 @@ class ArchiveExtractor(Extractor):
             lines.append(f"  … and {len(interesting) - 14} more")
 
         img = thumbs.card_for_item(item, lines=lines, size=ctx.thumb_size)
-        thumbs.save(img, item, ctx.previews_dir, role="card", seq=0,
-                    max_px=ctx.thumb_size)
+        ctx.save_preview(img, item, role="card", seq=0)
 
     # -- readers ------------------------------------------------------------
 
@@ -116,5 +115,4 @@ class ArchiveExtractor(Extractor):
                    "", "Contents not listed:", "no stdlib reader."],
             size=ctx.thumb_size,
         )
-        thumbs.save(img, item, ctx.previews_dir, role="card", seq=0,
-                    max_px=ctx.thumb_size)
+        ctx.save_preview(img, item, role="card", seq=0)

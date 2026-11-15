@@ -94,8 +94,7 @@ class VideoExtractor(Extractor):
                 if signature in seen:
                     continue
                 seen.add(signature)
-                thumbs.save(img, item, ctx.previews_dir,
-                            role=role, seq=seq, max_px=ctx.thumb_size)
+                ctx.save_preview(img, item, role=role, seq=seq)
                 saved += 1
 
             if saved == 0:

@@ -48,8 +48,7 @@ class TextExtractor(Extractor):
         lines = first_lines(body or raw, count=18)
         img = thumbs.card_for_item(item, lines=lines, size=ctx.thumb_size,
                                    dense=True)
-        thumbs.save(img, item, ctx.previews_dir, role="card", seq=0,
-                    max_px=ctx.thumb_size)
+        ctx.save_preview(img, item, role="card", seq=0)
 
     # -- per-format enrichment ---------------------------------------------
 

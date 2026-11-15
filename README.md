@@ -83,19 +83,26 @@ Output:
 |---|---|
 | `-i, --input` | folder to index, read-only (default `./downloads_test`) |
 | `-o, --output` | where everything is written (default `.`) |
-| `-f, --force` | re-extract everything, ignoring fingerprints |
 | `--thumb-size PX` | longest edge of a preview (default 512) |
 | `--video-frames N` | extra frames per video beyond the poster (default 3) |
 | `--skip-larger-than` | e.g. `2G` — still indexed, but not opened |
+| `--blur-pdf` | blur every PDF preview and store no text from one |
+| `--blur-radius PX` | override the blur strength (default scales from `--thumb-size`) |
 | `--only html\|obsidian` | render just one viewer |
 | `--obsidian-grain day` | one note per day instead of one per file |
 | `--inline-assets` | base64 the previews into `diary.html` — one portable file |
 | `-n, --dry-run` | report what would happen, write nothing |
 | `-v, --verbose` | per-file logging |
 
-Re-runs are **incremental**: a file with the same size, mtime and inode is
-carried over whole, previews included. Re-indexing 38 GB of video on every run
-is not something you'd want to do twice.
+The tool is **one-shot**. There is no reuse cache and no `--force`: every run
+reads every file and builds the manifest from nothing. That matches what it
+is for — run it, get a diary, then clear the Downloads folder out.
+
+Two things follow. A second run into the same output folder *replaces* the
+diary rather than adding to it, so if you have already emptied Downloads,
+point the next run at a different `--output`. And the generated Obsidian
+notes are pure output: the whole folder is rewritten each time, so nothing
+you edit inside it survives.
 
 ---
 
@@ -149,8 +156,8 @@ Filename matching is strict on purpose: separators are required, and a bare
 digit run only counts at exactly eight digits starting with a plausible year.
 An invoice called `175802554.pdf` is never read as a date.
 
-**Correcting one:** edit `date:` in the Obsidian note. The next index picks it
-up, flips `date_source` to `manual`, and never overwrites it again.
+Every candidate is kept in the manifest, and the Base has a **Check the
+date** view listing entries resting on a weak guess (`birth` or `mtime`).
 
 ---
 
@@ -167,9 +174,8 @@ up, flips `date_source` to `manual`, and never overwrites it again.
 - Filter by kind, source app, source domain, or free text over names and extracted text
 - Click any card for a lightbox with every preview, full metadata and a `file://` link to the original
 
-The page embeds a *view model*, not the manifest: no fingerprints, inode
-numbers, rejected date candidates or absolute paths, since it draws none of
-them. For 257 entries that is the difference between 1.7 MB and 0.28 MB.
+The page embeds a *view model*, not the manifest: no content hashes,
+rejected date candidates or absolute paths, since it draws none of them. For 257 entries that is the difference between 1.7 MB and 0.28 MB.
 
 ### Obsidian
 
@@ -184,6 +190,43 @@ The notes are generated. They are rewritten on every render, so don't keep
 anything in them except a corrected `date:`.
 
 ---
+
+---
+
+## Blurring PDFs
+
+86 of the 257 entries in a real Downloads folder are PDFs, and they are
+mostly tickets, invoices and boarding passes — a full name, a booking
+reference, a seat number and a scannable barcode, all legible in the
+timeline without clicking anything.
+
+```bash
+.venv/bin/python -m dldiary all --blur-pdf
+```
+
+Every preview rendered from a PDF is blurred, and **no text read off the
+page is stored at all** — no summary, no title taken from the first line,
+and no `author`, `subject` or `keywords` from the document metadata. The
+blur is baked into the `.webp`, so no sharp copy exists for a viewer, a
+screenshot or a recipient to get at. `pages`, `producer`, `format` and the
+creation date stay: structural, not personal, and the dates still feed date
+resolution.
+
+The radius scales with `--thumb-size` so the effect looks the same at any
+size — about 12 px at the default 512, tuned so that body text and barcodes
+are gone while the page is still recognisable as a ticket. `--blur-radius`
+overrides it.
+
+**What this costs:** free-text search no longer reaches inside PDFs, and
+cards show filenames instead of titles. Run without the flag to get both
+back.
+
+**What it does not cover:** filenames. A file called
+`31-10-2026--Ticket-01--28302466111-1.pdf` still displays its own name, and
+nothing here renames your files.
+
+`dldiary check` verifies the result — it errors if any preview of a blurred
+kind is unblurred, or if text was stored for one anyway.
 
 ---
 
@@ -234,9 +277,9 @@ previews and viewers that lost entries. `dldiary all` runs it automatically.
 ```
 
 **`test_smoke.py`** — 33 integration tests against the eight real files in
-`downloads_test/`: extraction, dates, provenance, incremental re-runs, the
-manifest schema, both viewers. It asserts that the input folder is
-byte-for-byte unchanged by a run and that the ZIP is never extracted.
+`downloads_test/`: extraction, dates, provenance, blurring, the manifest
+schema, both viewers. It asserts that the input folder is byte-for-byte
+unchanged by a run and that the ZIP is never extracted.
 
 **`test_scale.py`** — the tests that were missing. The smoke suite passed
 while the real page was blank, because its corpus had neither volume nor bad
@@ -259,7 +302,7 @@ dldiary/
   provenance.py    xattr → download date, source app, source URL
   dates.py         candidates and precedence
   thumbs.py        Pillow resize/encode and the card renderer
-  indexer.py       the pass that ties it together, incrementally
+  indexer.py       the pass that ties it together
   extractors/      one module per file kind, failures isolated
   viewers/         html.py, obsidian.py — read the manifest, write a view
 ```

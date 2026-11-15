@@ -56,6 +56,7 @@ def run(cfg: Config) -> list[Problem]:
 
     problems += _check_envelope(data)
     problems += _check_items(data, cfg)
+    problems += _check_blur(data, cfg)
     problems += _check_aggregates(data)
     problems += _check_orphan_previews(data, cfg)
     problems += _check_viewers(data, cfg)
@@ -231,6 +232,36 @@ def _check_image(path: Path, preview: dict, where: str,
 
 
 # -- aggregates and leftovers -----------------------------------------------
+
+
+def _check_blur(data: dict, cfg: Config) -> list[Problem]:
+    """Every preview of a blurred kind must actually be marked blurred.
+
+    Catches an extractor that wrote a preview without going through
+    `Context.save_preview` — the failure mode would otherwise be a sharp
+    ticket sitting in a diary you believed was private.
+    """
+    if not cfg.blur_kinds:
+        return []
+
+    out: list[Problem] = []
+    for item in data.get("items") or []:
+        if not isinstance(item, dict) or item.get("kind") not in cfg.blur_kinds:
+            continue
+        where = item.get("name") or item.get("id") or "?"
+
+        sharp = [p.get("path") for p in item.get("previews") or []
+                 if isinstance(p, dict) and not p.get("blurred")]
+        if sharp:
+            out.append(Problem(
+                "error", where,
+                f"{len(sharp)} preview(s) not blurred although --blur-pdf "
+                f"covers {item['kind']}: {sharp[0]}",
+            ))
+        if item.get("summary"):
+            out.append(Problem("error", where,
+                               "text stored for a blurred kind"))
+    return out
 
 
 def _check_aggregates(data: dict) -> list[Problem]:

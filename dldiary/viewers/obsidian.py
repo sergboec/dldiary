@@ -157,6 +157,8 @@ def _item_note(item: Item, mapping: dict[str, str]) -> str:
                 "height", "author", "artist", "album"):
         if item.meta.get(key) not in (None, ""):
             front.append((key, _yaml_scalar(item.meta[key])))
+    if any(p.blurred for p in item.previews):
+        front.append(("blurred", "true"))
     front.append(("tags", "[downloads-diary]"))
 
     lines = ["---"]
