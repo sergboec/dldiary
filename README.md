@@ -329,8 +329,13 @@ Three things it does not cover:
 * **Filenames.** `31-10-2026--Ticket-01--28302466111-1.pdf` still shows its
   own name; nothing here renames your files, and a file called
   `conference - Yourname.pptx` announces itself.
-* **Anything that is not a PDF.** Word and PowerPoint files carry an author
-  in their own metadata and are not covered by this flag.
+* **Surgical treatment for Office files.** A `.docx` or `.pptx` has no
+  usable font size to filter on — PowerPoint declares none at all on its
+  runs, inheriting them from slide layouts and masters. So Office files get
+  the blunt treatment instead: either blur flag blurs their preview whole,
+  drops their text, and drops `author`, `subject` and `lastModifiedBy`.
+  That last one is what actually leaked here — across this folder those
+  fields held five different people's names.
 * **Your home directory.** Every entry stores the file's path, so
   `/Users/yourname/` appears throughout `index.json` and the page.
 

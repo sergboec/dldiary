@@ -171,9 +171,9 @@ def build_parser() -> argparse.ArgumentParser:
     privacy = p.add_argument_group("privacy")
     privacy.add_argument(
         "--blur-pdf", action="store_true",
-        help="blur every preview rendered from a PDF, and store no text "
-             "extracted from one. Tickets and invoices stop being readable "
-             "in the timeline; PDF contents stop being searchable",
+        help="blur PDF previews entirely, rather than only their small "
+             "text, and store no text extracted from one. Office documents "
+             "are covered the same way by either blur flag",
     )
     privacy.add_argument(
         "--blur-text-below", type=float, nargs="?", const=DEFAULT_SMALL_TEXT_PT,
@@ -207,6 +207,26 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _blur_kinds(args) -> frozenset[str]:
+    """Which kinds get the blunt treatment: blur the lot, keep no text.
+
+    PDFs can be surgical because PyMuPDF gives every span a font size and a
+    bounding box. Office files cannot: PowerPoint declares no size on its
+    runs at all — 0 of 181 in a real deck — because sizes are inherited
+    from slide layouts and masters, and resolving that needs a layout
+    engine. With no size to measure, the only honest reading of "hide the
+    private parts" is to hide the document.
+    """
+    kinds: set[str] = set()
+    if args.blur_pdf:
+        kinds.add("pdf")
+    # Either flag covers Office the same way, so the blunter option is
+    # never the less private one.
+    if args.blur_pdf or args.blur_text_below is not None:
+        kinds.add("document")
+    return frozenset(kinds)
+
+
 def parse_args(argv: list[str] | None = None) -> Config:
     args = build_parser().parse_args(argv)
     return Config(
@@ -216,7 +236,7 @@ def parse_args(argv: list[str] | None = None) -> Config:
         thumb_size=max(64, args.thumb_size),
         video_frames=max(0, args.video_frames),
         skip_larger_than=args.skip_larger_than,
-        blur_kinds=frozenset({"pdf"}) if args.blur_pdf else frozenset(),
+        blur_kinds=_blur_kinds(args),
         blur_radius=args.blur_radius,
         blur_text_below=args.blur_text_below,
         only=args.only,

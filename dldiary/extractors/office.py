@@ -53,6 +53,11 @@ class OfficeExtractor(Extractor):
     exts = frozenset({"docx", "pptx", "xlsx", "odt", "ods", "odp"})
 
     def extract(self, item: Item, path: Path, ctx: Context) -> None:
+        # No usable font size on an OOXML run, so there is nothing to be
+        # surgical with: when blurring is on, the document's text is not
+        # stored and its thumbnail is blurred whole by `save_preview`.
+        private = ctx.suppress_text(item)
+
         if not zipfile.is_zipfile(path):
             # Legacy .doc/.xls, or a corrupt file. A card still works.
             item.meta["format"] = "legacy binary"
@@ -61,9 +66,15 @@ class OfficeExtractor(Extractor):
 
         with zipfile.ZipFile(path) as zf:
             names = set(zf.namelist())
-            self._core_properties(item, zf, names)
+            self._core_properties(item, zf, names, private=private)
             text = self._text(item, zf, names)
             embedded = self._thumbnail(item, zf, names, ctx)
+
+        if private:
+            item.meta["text_suppressed"] = True
+            if not embedded:
+                self._card(item, ctx, [])
+            return
 
         item.summary = clean_text(text)
         if not embedded:
@@ -90,7 +101,7 @@ class OfficeExtractor(Extractor):
         return False
 
     def _core_properties(self, item: Item, zf: zipfile.ZipFile,
-                         names: set[str]) -> None:
+                         names: set[str], *, private: bool = False) -> None:
         if "docProps/core.xml" not in names:
             return
         try:
@@ -102,15 +113,19 @@ class OfficeExtractor(Extractor):
             node = root.find(tag, _CORE_NS)
             return (node.text or "").strip() if node is not None else ""
 
-        title = text_of("dc:title")
-        if title:
-            item.title = title[:120]
-        for tag, key in (("dc:creator", "author"),
-                         ("cp:lastModifiedBy", "last_modified_by"),
-                         ("dc:subject", "subject")):
-            value = text_of(tag)
-            if value:
-                item.meta[key] = value
+        # dc:creator and cp:lastModifiedBy are the two fields that actually
+        # leaked here: across this corpus they held five different people's
+        # names. They go whenever blurring is on, as they do for PDFs.
+        if not private:
+            title = text_of("dc:title")
+            if title:
+                item.title = title[:120]
+            for tag, key in (("dc:creator", "author"),
+                             ("cp:lastModifiedBy", "last_modified_by"),
+                             ("dc:subject", "subject")):
+                value = text_of(tag)
+                if value:
+                    item.meta[key] = value
 
         for tag, source in (("dcterms:created", "doc_created"),
                             ("dcterms:modified", "doc_modified")):

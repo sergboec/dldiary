@@ -378,12 +378,14 @@ class TestBlurSmallText(unittest.TestCase):
         finally:
             shutil.rmtree(sharp, ignore_errors=True)
 
-    def test_other_kinds_are_untouched(self):
+    def test_only_pdfs_and_documents_are_affected(self):
+        """Photos, video, code and archives are never touched by this."""
         for item in self.manifest.items:
-            if item.kind == "pdf":
+            if item.kind in ("pdf", "document"):
                 continue
             with self.subTest(item.name):
                 self.assertFalse(any(p.blurred for p in item.previews))
+                self.assertNotIn("text_suppressed", item.meta)
 
     def test_threshold_is_respected(self):
         """A threshold above everything on the page blurs the lot."""
