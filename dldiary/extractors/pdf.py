@@ -73,7 +73,12 @@ class PdfExtractor(Extractor):
                 if index == 0:
                     item.meta["page_width"] = round(page.rect.width)
                     item.meta["page_height"] = round(page.rect.height)
-                self._render(item, page, ctx,
+                # Parsed once per page and read twice: the size rule needs
+                # these spans for its blur rectangles, and the text it keeps
+                # comes off the very same ones — that is what makes the two
+                # agree. PyMuPDF rebuilds the dictionary on every call.
+                lines = _text_lines(page) if ctx.cfg.blur_text_below else []
+                self._render(item, page, lines, ctx,
                              role="poster" if index == 0 else "page", seq=index)
                 if private:
                     continue
@@ -81,7 +86,7 @@ class PdfExtractor(Extractor):
                     # Text that is blurred in the image must not be stored
                     # in the manifest either, or the blur is decorative.
                     if below:
-                        text_parts.append(_large_text(page, below))
+                        text_parts.append(_large_text(lines, below))
                     else:
                         text_parts.append(page.get_text())
                 except Exception:
@@ -106,8 +111,8 @@ class PdfExtractor(Extractor):
 
     # -- helpers ------------------------------------------------------------
 
-    def _render(self, item: Item, page, ctx: Context, *, role: str,
-                seq: int) -> None:
+    def _render(self, item: Item, page, lines: list[list[dict]], ctx: Context,
+                *, role: str, seq: int) -> None:
         longest = max(page.rect.width, page.rect.height, 1)
         zoom = min(ctx.thumb_size / longest, 4.0)
         pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
@@ -116,8 +121,7 @@ class PdfExtractor(Extractor):
         redacted = False
         below = ctx.cfg.blur_text_below
         if below:
-            spans = _spans(page)
-            if not spans:
+            if not lines:
                 # No text layer at all — a scan, or text drawn as curves.
                 # There is nothing to measure, so the safe reading of "hide
                 # the fine print" is to hide the page.
@@ -126,8 +130,9 @@ class PdfExtractor(Extractor):
                     ctx.cfg.blur_radius or max(4, ctx.thumb_size // 42)))
                 redacted = True
             else:
-                rects = [_scale(s["bbox"], zoom) for s in spans
-                         if s["size"] < below]
+                rects = [_scale(span["bbox"], zoom)
+                         for spans in lines for span in spans
+                         if span["size"] < below]
                 img = thumbs.blur_regions(img, rects,
                                           _region_radius(below, zoom))
                 redacted = bool(rects)
@@ -192,26 +197,20 @@ class PdfExtractor(Extractor):
         return ""
 
 
-def _large_text(page, below: float) -> str:
+def _large_text(lines: list[list[dict]], below: float) -> str:
     """The page's text, minus every span set below `below` points.
 
     Line structure is kept, so what survives still reads as lines rather
     than as a bag of words.
     """
     out: list[str] = []
-    try:
-        blocks = page.get_text("dict").get("blocks", [])
-    except Exception:
-        return ""
-    for block in blocks:
-        for line in block.get("lines", []):
-            kept = [s.get("text", "") for s in line.get("spans", [])
-                    if s.get("size", 0) >= below]
-            text = " ".join(t.strip() for t in kept if t.strip())
-            # Barcode fonts draw their bars as large glyphs, so a size
-            # filter alone keeps lines like `Ë*Æ{#.N/{,.nÌ`.
-            if text and not _is_glyph_soup(text):
-                out.append(text)
+    for spans in lines:
+        kept = [s.get("text", "") for s in spans if s.get("size", 0) >= below]
+        text = " ".join(t.strip() for t in kept if t.strip())
+        # Barcode fonts draw their bars as large glyphs, so a size filter
+        # alone keeps lines like `Ë*Æ{#.N/{,.nÌ`.
+        if text and not _is_glyph_soup(text):
+            out.append(text)
     return "\n".join(out)
 
 
@@ -225,19 +224,28 @@ def _is_glyph_soup(line: str) -> bool:
     return odd / len(stripped) > 0.25
 
 
-def _spans(page) -> list[dict]:
-    """Every text span on the page, with its font size and bounding box."""
+def _text_lines(page) -> list[list[dict]]:
+    """The page's text lines, each as its spans with font size and bbox.
+
+    Grouping by line rather than returning one flat list is what lets a
+    single parse serve both readers: the blur only cares about each span's
+    size and box, but the kept text has to come out as lines.
+
+    An empty result means no text layer at all — a scan, or text drawn as
+    curves — which the caller treats as "nothing to measure".
+    """
     try:
         blocks = page.get_text("dict").get("blocks", [])
     except Exception:
         return []
-    return [
-        span
-        for block in blocks
-        for line in block.get("lines", [])
-        for span in line.get("spans", [])
-        if span.get("text", "").strip()
-    ]
+    lines: list[list[dict]] = []
+    for block in blocks:
+        for line in block.get("lines", []):
+            spans = [s for s in line.get("spans", [])
+                     if s.get("text", "").strip()]
+            if spans:
+                lines.append(spans)
+    return lines
 
 
 def _scale(bbox, zoom: float) -> tuple[float, float, float, float]:
