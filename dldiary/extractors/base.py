@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..config import Config
-from ..manifest import Item
+from ..manifest import MAX_SUMMARY, Item
 from .. import thumbs
 
 
@@ -62,8 +62,6 @@ class Context:
         places is not a policy — the same reason the manifest sanitizes on
         write instead of trusting its callers.
         """
-        from .. import thumbs
-
         return thumbs.save(
             img, item, self.previews_dir,
             role=role, seq=seq,
@@ -74,8 +72,6 @@ class Context:
     def save_preview_bytes(self, data: bytes, item: Item, *,
                            role: str = "cover", seq: int = 0):
         """Same, for an image already embedded in the source file."""
-        from .. import thumbs
-
         return thumbs.save_bytes(
             data, item, self.previews_dir,
             role=role, seq=seq,
@@ -116,10 +112,9 @@ class Extractor:
 
 _WS_RUN = re.compile(r"[ \t ]+")
 _BLANK_RUN = re.compile(r"\n{3,}")
-SUMMARY_LIMIT = 600
 
 
-def clean_text(text: str, limit: int = SUMMARY_LIMIT) -> str:
+def clean_text(text: str, limit: int = MAX_SUMMARY) -> str:
     """Collapse the whitespace soup that text extraction produces."""
     if not text:
         return ""

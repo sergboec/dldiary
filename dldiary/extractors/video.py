@@ -10,11 +10,11 @@ costs the same as a 6 MB one.
 
 from __future__ import annotations
 
-from datetime import datetime
 from fractions import Fraction
 from pathlib import Path
 
-from .. import dates, thumbs
+from .. import dates
+from ..config import human_duration
 from ..manifest import Item
 from .base import Context, Extractor, MissingDependency
 
@@ -181,7 +181,7 @@ class VideoExtractor(Extractor):
                 item.meta["codec"] = ctx_.codec.name
         if duration:
             item.meta["duration"] = round(duration, 2)
-            item.meta["duration_human"] = _hms(duration)
+            item.meta["duration_human"] = human_duration(duration)
         rate = stream.average_rate or stream.guessed_rate
         if isinstance(rate, Fraction) and rate.denominator:
             item.meta["fps"] = round(float(rate), 2)
@@ -270,10 +270,3 @@ def _signature(img) -> bytes:
         return img.convert("L").resize((16, 16)).tobytes()
     except Exception:
         return b""
-
-
-def _hms(seconds: float) -> str:
-    total = int(round(seconds))
-    h, rem = divmod(total, 3600)
-    m, s = divmod(rem, 60)
-    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"

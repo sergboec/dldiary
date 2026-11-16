@@ -12,6 +12,7 @@ text as a summary, and the document metadata.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 
 from .. import dates, thumbs
@@ -171,8 +172,6 @@ class PdfExtractor(Extractor):
         if not m:
             return ""
         parts = [int(p) if p else 0 for p in m.groups()]
-        from datetime import datetime
-
         try:
             dt = datetime(parts[0], parts[1], parts[2],
                           parts[3], parts[4], parts[5])

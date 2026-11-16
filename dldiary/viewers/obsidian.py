@@ -23,6 +23,7 @@ import re
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from ..config import Config, human_size
 from ..manifest import Item, Manifest
@@ -443,6 +444,4 @@ def _yaml_scalar(value) -> str:
 
 
 def _uri(path: str) -> str:
-    from urllib.parse import quote
-
     return quote(path)

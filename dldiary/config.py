@@ -38,13 +38,22 @@ def parse_size(text: str) -> int:
 
 def human_size(n: int) -> str:
     """Bytes as a short human string. Used in viewers and log lines."""
-    step = 1024.0
     value = float(n)
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if value < step or unit == "TB":
-            return f"{value:.0f} {unit}" if unit == "B" else f"{value:.1f} {unit}"
-        value /= step
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024.0:
+            return f"{value:.0f} B" if unit == "B" else f"{value:.1f} {unit}"
+        value /= 1024.0
     return f"{value:.1f} TB"
+
+
+def human_duration(seconds: float) -> str:
+    """`"3:07"`, or `"1:02:30"` once there is an hour. Audio and video both
+    label a running time, and they labelled it with the same function
+    written twice."""
+    total = int(round(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
 @dataclass

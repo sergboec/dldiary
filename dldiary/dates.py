@@ -23,10 +23,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
-from .manifest import Item
+from .manifest import DATE_SOURCES, Item
 from .scan import birthtime_of
 
-PRECEDENCE = ("exif", "media", "filename", "quarantine", "birth", "mtime")
+# The manifest declares the same tuple as the set of legal `date_source`
+# values; here it is read as an order. One definition, two readings — they
+# cannot drift apart into a date nobody will ever pick.
+PRECEDENCE = DATE_SOURCES
 
 _MIN_YEAR = 1990
 

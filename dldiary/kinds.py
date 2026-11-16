@@ -7,6 +7,8 @@ one-line change.
 
 from __future__ import annotations
 
+import mimetypes
+
 # Order matters only for readability; extensions are unique across groups.
 _KIND_EXTS: dict[str, set[str]] = {
     "image": {
@@ -81,7 +83,5 @@ def mime_for_ext(ext: str) -> str:
     ext = ext.lower()
     if ext in _MIME_BY_EXT:
         return _MIME_BY_EXT[ext]
-    import mimetypes
-
     guessed, _ = mimetypes.guess_type(f"x.{ext}")
     return guessed or "application/octet-stream"

@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
@@ -118,9 +117,6 @@ class Item:
                     return p
         return self.previews[0]
 
-    def add_preview(self, preview: Preview) -> None:
-        self.previews.append(preview)
-
     # -- boundary enforcement ---------------------------------------------
 
     def normalize(self) -> None:
@@ -157,51 +153,11 @@ class Item:
             k: str(v)[:40] for k, v in list(self.date_candidates.items())[:12]
         }
 
-    def validate(self) -> list[str]:
-        """Structural problems with this item, as human-readable strings."""
-        problems: list[str] = []
-        if not self.id:
-            problems.append("missing id")
-        if not self.name:
-            problems.append("missing name")
-        if self.date and self.date_source not in DATE_SOURCES:
-            problems.append(f"unknown date_source {self.date_source!r}")
-        if not self.previews:
-            problems.append("no previews")
-        for preview in self.previews:
-            if preview.role not in PREVIEW_ROLES:
-                problems.append(f"unknown preview role {preview.role!r}")
-            if not preview.path.startswith("previews/"):
-                problems.append(f"preview outside previews/: {preview.path}")
-        if len(self.source.get("url", "")) > MAX_URL:
-            problems.append("source url over the cap")
-        if len(self.summary) > MAX_SUMMARY:
-            problems.append("summary over the cap")
-        return problems
-
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "name": self.name,
-            "ext": self.ext,
-            "kind": self.kind,
-            "mime": self.mime,
-            "size": self.size,
-            "src_path": self.src_path,
-            "date": self.date,
-            "date_source": self.date_source,
-            "date_candidates": self.date_candidates,
-            "title": self.title,
-            "summary": self.summary,
-            "source": self.source,
-            "previews": [p.to_dict() for p in self.previews],
-            "meta": self.meta,
-            "content_key": self.content_key,
-            "indexed_at": self.indexed_at,
-            "error": self.error,
-        }
+        """Field order follows the declaration above; `Preview` recurses."""
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Item":

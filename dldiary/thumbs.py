@@ -13,10 +13,12 @@ Everything here is Pillow. No external binaries.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
+from .config import human_size
 from .manifest import Item, Preview
 
 # -- look -------------------------------------------------------------------
@@ -129,7 +131,7 @@ def save(
         w=img.width, h=img.height, bytes=out.stat().st_size,
         blurred=blur > 0,
     )
-    item.add_preview(preview)
+    item.previews.append(preview)
     return preview
 
 
@@ -144,8 +146,6 @@ def save_bytes(
     blur: float = 0.0,
 ) -> Preview | None:
     """Same, for an image already embedded in a file (cover art, docProps)."""
-    import io
-
     try:
         with Image.open(io.BytesIO(data)) as img:
             img.load()
@@ -293,8 +293,6 @@ def render_card(
 def card_for_item(item: Item, lines: list[str] | None = None,
                   size: int = 512, dense: bool = False) -> Image.Image:
     """The standard card for an item, used by several extractors."""
-    from .config import human_size
-
     return render_card(
         kind=item.kind,
         tag=item.ext or item.kind,

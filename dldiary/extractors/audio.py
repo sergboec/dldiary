@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .. import dates, thumbs
+from ..config import human_duration
 from ..manifest import Item
 from .base import Context, Extractor, MissingDependency
 
@@ -55,7 +56,7 @@ class AudioExtractor(Extractor):
         length = getattr(info, "length", None)
         if length:
             item.meta["duration"] = round(float(length), 2)
-            item.meta["duration_human"] = _mmss(float(length))
+            item.meta["duration_human"] = human_duration(float(length))
         for attr, key in (("bitrate", "bitrate"), ("sample_rate", "sample_rate"),
                           ("channels", "channels")):
             value = getattr(info, attr, None)
@@ -145,10 +146,3 @@ def _first_text(value) -> str:
     if isinstance(value, tuple):          # MP4 track numbers: (3, 12)
         value = value[0]
     return str(value).strip()
-
-
-def _mmss(seconds: float) -> str:
-    total = int(round(seconds))
-    h, rem = divmod(total, 3600)
-    m, s = divmod(rem, 60)
-    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
