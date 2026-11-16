@@ -81,7 +81,10 @@ def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
             "name": item.name,
             "kind": item.kind,
             "ext": item.ext,
-            "sizeh": human_size(item.size),
+            # Bytes, not a formatted string: the page both prints this and
+            # adds it up per month, and a total summed from "1.2 MB" is a
+            # total of rounded numbers.
+            "size": item.size,
             "date": item.date,
             "previews": previews,
         }
@@ -514,12 +517,6 @@ function fmtSize(n){
   while(n >= 1024 && i < u.length-1){ n /= 1024; i++; }
   return (i === 0 ? n : n.toFixed(1)) + ' ' + u[i];
 }
-function bytesOf(it){
-  var m = /^([\\d.]+)\\s*(B|KB|MB|GB|TB)$/.exec(it.sizeh || '');
-  if(!m) return 0;
-  var mult = {B:1, KB:1024, MB:1048576, GB:1073741824, TB:1099511627776};
-  return parseFloat(m[1]) * mult[m[2]];
-}
 
 /* ---------- header ---------- */
 function header(){
@@ -748,7 +745,7 @@ function buildTimeline(){
     section.id = 'm-' + key;
     section._items = items;
 
-    var bytes = items.reduce(function(a, b){ return a + bytesOf(b); }, 0);
+    var bytes = items.reduce(function(a, b){ return a + b.size; }, 0);
     var h2 = el('h2', null, key === 'undated'
       ? 'No date' : MONTHS[+key.slice(5,7) - 1] + ' ' + key.slice(0,4));
     h2.appendChild(el('small', null, items.length + ' · ' + fmtSize(bytes)));
@@ -835,7 +832,7 @@ function card(it){
 
   var cap = el('figcaption');
   cap.appendChild(el('div','name', it.title || it.name));
-  var sub = [hhmm(it.date), it.sizeh, it.domain || it.app].filter(Boolean);
+  var sub = [hhmm(it.date), fmtSize(it.size), it.domain || it.app].filter(Boolean);
   cap.appendChild(el('div','sub', sub.join(' · ')));
   fig.appendChild(cap);
 
@@ -920,7 +917,7 @@ function paintLightbox(){
   row('when', when && !isNaN(when) ? when.toLocaleString() : 'unknown');
   row('date from', it.dateSource || 'quarantine');
   row('kind', it.kind + (it.ext && it.ext !== it.kind ? ' · ' + it.ext : ''));
-  row('size', it.sizeh);
+  row('size', fmtSize(it.size));
   row('app', it.app);
   row('source', it.domain, it.url || null);
 
