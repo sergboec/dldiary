@@ -12,10 +12,9 @@ text as a summary, and the document metadata.
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from pathlib import Path
 
-from .. import dates, thumbs
+from .. import thumbs
 from ..manifest import Item
 from .base import (
     Context, Extractor, MissingDependency, clean_text, looks_like_prose,
@@ -33,7 +32,6 @@ except ImportError:  # pragma: no cover
     ImageFilter = None  # type: ignore[assignment]
 
 MAX_PAGE_PREVIEWS = 3          # beyond the poster
-_PDF_DATE = re.compile(r"D:(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?(\d{2})?")
 
 
 class PdfExtractor(Extractor):
@@ -150,9 +148,7 @@ class PdfExtractor(Extractor):
         # people's names, and in one case a full street address — so these
         # go whenever any blurring is on, not only for a whole-page blur.
         # Document metadata has no font size for a size rule to measure.
-        # `creator`, `producer` and `format` name the software, and the
-        # dates are structural — those stay, and the dates still feed date
-        # resolution.
+        # `creator`, `producer` and `format` name the software, so they stay.
         keys = ("creator", "producer", "format") if private else (
             "author", "subject", "keywords", "creator", "producer", "format")
         for key in keys:
@@ -160,29 +156,9 @@ class PdfExtractor(Extractor):
             if value:
                 item.meta[key] = value
 
-        for key, source in (("creationDate", "pdf_created"),
-                            ("modDate", "pdf_modified")):
-            parsed = self._parse_date(meta.get(key, ""))
-            if parsed:
-                item.date_candidates.setdefault(source, parsed)
-
         title = (meta.get("title") or "").strip()
         if title and not private and not _is_junk_title(title):
             item.title = title
-
-    @staticmethod
-    def _parse_date(raw: str) -> str:
-        """PDF dates look like `D:20261024110143+02'00'`."""
-        m = _PDF_DATE.match(raw or "")
-        if not m:
-            return ""
-        parts = [int(p) if p else 0 for p in m.groups()]
-        try:
-            dt = datetime(parts[0], parts[1], parts[2],
-                          parts[3], parts[4], parts[5])
-        except ValueError:
-            return ""
-        return dt.isoformat(timespec="seconds") if dates.plausible(dt) else ""
 
     @staticmethod
     def _title(body: str) -> str:

@@ -13,7 +13,6 @@ from __future__ import annotations
 from fractions import Fraction
 from pathlib import Path
 
-from .. import dates
 from ..config import human_duration
 from ..manifest import Item
 from .base import Context, Extractor, MissingDependency
@@ -43,7 +42,6 @@ MAX_EVALUATE = 24                # candidate frames examined once there
 MIN_STDDEV = 8.0                 # below this a frame is a fade or a blank
 
 # Container tags that hold a creation date, in the order we trust them.
-_DATE_TAGS = ("creation_time", "date", "com.apple.quicktime.creationdate")
 
 
 class VideoExtractor(Extractor):
@@ -197,15 +195,6 @@ class VideoExtractor(Extractor):
         title = (tags.get("title") or "").strip()
         if title and _readable(title):
             item.title = title
-
-        for tag in _DATE_TAGS:
-            raw = tags.get(tag)
-            if not raw:
-                continue
-            parsed = dates.parse_exif_datetime(str(raw))
-            if parsed:
-                dates.add_candidate(item, "media", parsed)
-                break
 
         try:
             item.meta["container"] = container.format.name

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import dates, thumbs
+from .. import thumbs
 from ..config import human_duration
 from ..manifest import Item
 from .base import Context, Extractor, MissingDependency
@@ -86,10 +86,6 @@ class AudioExtractor(Extractor):
         if found.get("title"):
             artist = found.get("artist")
             item.title = f"{artist} — {found['title']}" if artist else found["title"]
-
-        parsed = dates.parse_exif_datetime(found.get("date", ""))
-        if parsed:
-            dates.add_candidate(item, "media", parsed)
 
         bits = [found.get(k) for k in ("artist", "title", "album")]
         item.summary = " · ".join(b for b in bits if b)

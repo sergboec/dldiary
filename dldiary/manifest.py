@@ -40,9 +40,6 @@ MAX_META_VALUE = 500
 MAX_META_KEYS = 40
 MAX_META_LIST = 50
 
-# Date provenance, best first.
-DATE_SOURCES = ("exif", "media", "filename", "quarantine", "birth", "mtime")
-
 
 @dataclass
 class Preview:
@@ -84,9 +81,7 @@ class Item:
     size: int
     src_path: str
 
-    date: str = ""                      # ISO 8601, the anchor on the timeline
-    date_source: str = "mtime"
-    date_candidates: dict[str, str] = field(default_factory=dict)
+    date: str = ""                      # ISO 8601; the file's modification time
 
     title: str = ""
     summary: str = ""
@@ -149,9 +144,6 @@ class Item:
         # the file. Clamping alone would have let it straight through.
         self.meta = _clamp_mapping(sanitize(self.meta))
         self.source = sanitize(self.source)
-        self.date_candidates = {
-            k: str(v)[:40] for k, v in list(self.date_candidates.items())[:12]
-        }
 
     # -- serialisation -----------------------------------------------------
 
@@ -170,8 +162,6 @@ class Item:
             size=int(d.get("size", 0)),
             src_path=d.get("src_path", ""),
             date=d.get("date", ""),
-            date_source=d.get("date_source", "mtime"),
-            date_candidates=dict(d.get("date_candidates") or {}),
             title=d.get("title", ""),
             summary=d.get("summary", ""),
             source=dict(d.get("source") or {}),

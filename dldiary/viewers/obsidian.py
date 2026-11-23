@@ -140,7 +140,6 @@ def _item_note(item: Item, mapping: dict[str, str]) -> str:
         front.append(("date", item.date))
         front.append(("day", item.day))
     front += [
-        ("date_source", item.date_source),
         ("kind", item.kind),
         ("ext", item.ext),
         ("size", item.size),
@@ -226,7 +225,7 @@ def _day_note(day: str, items: list[Item], mapping: dict[str, str]) -> str:
 def _details_table(item: Item) -> list[str]:
     rows: list[tuple[str, str]] = [
         ("File", f"`{item.name}`"),
-        ("When", f"{item.date or 'unknown'} ({item.date_source})"),
+        ("When", item.date or "unknown"),
         ("Size", human_size(item.size)),
         ("Kind", f"{item.kind}{' · ' + item.ext if item.ext else ''}"),
     ]
@@ -300,8 +299,6 @@ properties:
     displayName: Source
   note.source_app:
     displayName: App
-  note.date_source:
-    displayName: Date from
   formula.when:
     displayName: When
 
@@ -331,7 +328,6 @@ views:
       - size_human
       - source_domain
       - source_app
-      - date_source
     sort:
       - property: date
         direction: DESC
@@ -347,23 +343,6 @@ views:
       - filename
       - formula.when
       - kind
-    sort:
-      - property: date
-        direction: DESC
-
-  - type: table
-    name: Check the date
-    filters:
-      or:
-        - 'date_source == "mtime"'
-        - 'date_source == "birth"'
-        - 'date_source == "unknown"'
-    order:
-      - filename
-      - formula.when
-      - date_source
-      - kind
-      - source_domain
     sort:
       - property: date
         direction: DESC

@@ -48,9 +48,9 @@ def render(manifest: Manifest, cfg: Config) -> Path:
 def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
     """The view model: only what the page actually draws.
 
-    Deliberately not the manifest. The manifest carries content hashes,
-    every rejected date candidate and absolute source paths — none of which
-    this page renders, and all of which it used to embed. Emitting
+    Deliberately not the manifest. The manifest carries content hashes and
+    absolute source paths — neither of which this page renders, and both of
+    which it used to embed. Emitting
     a projection instead took the page from 1.7 MB to a third of that, and
     keeps a change to the manifest from silently changing the page's weight.
     """
@@ -94,8 +94,6 @@ def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
             row["title"] = item.title
         if item.summary:
             row["summary"] = item.summary
-        if item.date_source not in ("quarantine", ""):
-            row["dateSource"] = item.date_source
         for key, prop in (("app", "app"), ("domain", "domain")):
             if item.source.get(key):
                 row[prop] = item.source[key]
@@ -904,7 +902,6 @@ function paintLightbox(){
 
   var when = it.date ? new Date(it.date) : null;
   row('when', when && !isNaN(when) ? when.toLocaleString() : 'unknown');
-  row('date from', it.dateSource || 'quarantine');
   row('kind', it.kind + (it.ext && it.ext !== it.kind ? ' · ' + it.ext : ''));
   row('size', fmtSize(it.size));
   row('app', it.app);

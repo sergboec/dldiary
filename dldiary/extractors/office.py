@@ -5,8 +5,7 @@ for either half of the job:
 
 * `docProps/thumbnail.jpeg` — PowerPoint and some Word documents embed a real
   rendered thumbnail. When it is there, it is the best possible preview.
-* `docProps/core.xml` — title, author, and the authored/modified dates, which
-  often predate the download and so date the entry better.
+* `docProps/core.xml` — the document's title and author.
 
 Text comes from the document body XML. Legacy binary formats (.doc, .xls)
 are not ZIPs and fall through to a card.
@@ -20,7 +19,7 @@ from xml.etree import ElementTree
 
 from pathlib import Path
 
-from .. import dates, thumbs
+from .. import thumbs
 from ..manifest import Item
 from .base import Context, Extractor, clean_text, first_lines
 
@@ -32,7 +31,6 @@ _THUMBNAIL_NAMES = (
 _CORE_NS = {
     "cp": "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
     "dc": "http://purl.org/dc/elements/1.1/",
-    "dcterms": "http://purl.org/dc/terms/",
 }
 
 _TEXT_PARTS = {
@@ -102,7 +100,7 @@ class OfficeExtractor(Extractor):
 
     def _core_properties(self, item: Item, zf: zipfile.ZipFile,
                          names: set[str], *, private: bool = False) -> None:
-        if "docProps/core.xml" not in names:
+        if private or "docProps/core.xml" not in names:
             return
         try:
             root = ElementTree.fromstring(zf.read("docProps/core.xml"))
@@ -115,25 +113,16 @@ class OfficeExtractor(Extractor):
 
         # dc:creator and cp:lastModifiedBy are the two fields that actually
         # leaked here: across this corpus they held five different people's
-        # names. They go whenever blurring is on, as they do for PDFs.
-        if not private:
-            title = text_of("dc:title")
-            if title:
-                item.title = title[:120]
-            for tag, key in (("dc:creator", "author"),
-                             ("cp:lastModifiedBy", "last_modified_by"),
-                             ("dc:subject", "subject")):
-                value = text_of(tag)
-                if value:
-                    item.meta[key] = value
-
-        for tag, source in (("dcterms:created", "doc_created"),
-                            ("dcterms:modified", "doc_modified")):
-            parsed = dates.parse_exif_datetime(text_of(tag))
-            if parsed:
-                item.date_candidates.setdefault(
-                    source, parsed.isoformat(timespec="seconds")
-                )
+        # names. Nothing is read at all when blurring is on, as for PDFs.
+        title = text_of("dc:title")
+        if title:
+            item.title = title[:120]
+        for tag, key in (("dc:creator", "author"),
+                         ("cp:lastModifiedBy", "last_modified_by"),
+                         ("dc:subject", "subject")):
+            value = text_of(tag)
+            if value:
+                item.meta[key] = value
 
     def _text(self, item: Item, zf: zipfile.ZipFile, names: set[str]) -> str:
         parts = _TEXT_PARTS.get(item.ext)

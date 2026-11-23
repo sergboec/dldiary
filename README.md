@@ -72,10 +72,9 @@ Output:
 
 | | |
 |---|---|
-| `dldiary all` | index, render both viewers, then check (default) |
+| `dldiary all` | index, then render both viewers (default) |
 | `dldiary index` | previews + manifest only |
 | `dldiary render` | rebuild viewers from the existing manifest, no re-extraction |
-| `dldiary check` | validate the manifest, the previews and the viewers |
 
 ### Options
 
@@ -153,13 +152,6 @@ switch Obsidian to one note per day, rebuild from the existing manifest:
 .venv/bin/python -m dldiary all --input ~/Pictures/inbox --output ~/diary-photos --thumb-size 900 --video-frames 5
 ```
 
-**Check an existing diary** without rebuilding anything — the thing to run
-if a page ever looks wrong:
-
-```bash
-.venv/bin/python -m dldiary check --output ~/diary
-```
-
 **A yearly ritual.** The tool is one-shot, so each year gets its own folder
 and the previous one is left alone:
 
@@ -203,36 +195,33 @@ ticketdirect-1.pdf          24 Oct 11:03  Firefox   eventim.de
 
 | kind | preview | extra |
 |---|---|---|
-| image | thumbnail, EXIF rotation applied | camera, lens, GPS, capture date |
+| image | thumbnail, EXIF rotation applied | GPS coordinates |
 | pdf | page 1 + up to 3 more pages | page count, author, opening text |
 | video | poster + 3 frames across the running time | duration, resolution, fps, codec |
 | audio | embedded cover art, else a card | artist, album, duration, bitrate |
 | text / code | rendered card of the first lines | encoding, line count, HTML `<title>` |
-| docx / pptx / xlsx | the document's own embedded thumbnail, else a card | author, created date, slide count |
+| docx / pptx / xlsx | the document's own embedded thumbnail, else a card | author, slide count |
 | zip | a card listing the contents | entry count, uncompressed size |
 | anything else | a card with the type and size | |
 
 Nothing ever ends up without a preview, so the timeline has no holes.
 
-### Which date wins
+### Which date an entry gets
 
-Several dates compete for one file. All candidates are kept in the manifest
-and the winner is recorded in `date_source`, so a wrong guess is visible
-rather than silent:
+The file's modification time, and nothing else — the same value Finder shows
+in its **Date Modified** column.
 
-1. `exif` — EXIF capture date (photos)
-2. `media` — container creation time (video, audio)
-3. `filename` — a date written into the name, e.g. `2026-09-13 14.28.18.mp4`
-4. `quarantine` — when it was downloaded
-5. `birth` — filesystem creation time
-6. `mtime` — last modified
+There used to be six competing sources (EXIF capture date, container creation
+time, a date spelled out in the filename, the download timestamp, filesystem
+birth time, mtime), resolved by precedence and recorded in a `date_source`
+field. Measured over 265 real entries, that machinery moved 38 of them off
+their mtime day — and two thirds of what it collected could never win
+anything. A screenshot taken in 2019 and re-saved today is, for a diary about
+a downloads folder, a file that arrived today. One source of truth, no guess
+to audit.
 
-Filename matching is strict on purpose: separators are required, and a bare
-digit run only counts at exactly eight digits starting with a plausible year.
-An invoice called `175802554.pdf` is never read as a date.
-
-Every candidate is kept in the manifest, and the Base has a **Check the
-date** view listing entries resting on a weak guess (`birth` or `mtime`).
+The download timestamp is still read from `com.apple.quarantine` and kept as
+`source.downloaded_at`; it is provenance, not the anchor.
 
 ---
 
@@ -258,7 +247,7 @@ rejected date candidates or absolute paths, since it draws none of them. For 257
 `previews/` into a vault you already have.
 
 - One note per file, with the preview as a `preview:` property
-- `Downloads Diary.base` with four views: a **Gallery** of cover images, a sortable **Everything** table, **By source**, and **Check the date** for entries resting on a weak guess
+- `Downloads Diary.base` with three views: a **Gallery** of cover images, a sortable **Everything** table, and **By source**
 - `--obsidian-grain day` collapses to one note per day with a gallery in the body
 
 The notes are generated. They are rewritten on every render, so don't keep
@@ -344,11 +333,10 @@ Three things it does not cover:
 `--blur-pdf` blurs every PDF preview end to end and stores no text from one
 at all — no summary, no title, no `author`, `subject` or `keywords`. It
 cannot miss, which the size rule can, and it covers barcodes. `pages`,
-`producer`, `format` and the creation date stay either way: structural, not
-personal, and the dates still feed date resolution.
+`producer` and `format` stay either way: structural, not personal.
 
-`dldiary check` errors if any preview of a blurred kind is unblurred, or if
-text was stored for one anyway.
+Every preview goes through `Context.save_preview`, which applies the run's
+blur policy, so no extractor can forget it.
 
 ---
 
@@ -378,15 +366,10 @@ filename *stem*, so `beatles.png` and `beatles.omr` on one day collided and
 three entries disappeared without a word. Names now carry the extension, and
 the viewer asserts that note count equals entry count.
 
-`dldiary check` enforces all of this from outside, against what is on disk:
-
-```bash
-.venv/bin/python -m dldiary check --output ~/diary
-```
-
-It parses the way a browser would, confirms every preview exists and matches
-its recorded dimensions, finds duplicate ids, oversized fields, orphaned
-previews and viewers that lost entries. `dldiary all` runs it automatically.
+All of this is enforced where the data is produced — `sanitize()` and
+`Item.normalize()` on the way into the manifest, and the viewer's own parity
+assertion on the way out — rather than by a separate pass that re-reads what
+the same run has just written.
 
 ## Tests
 
@@ -398,7 +381,7 @@ previews and viewers that lost entries. `dldiary all` runs it automatically.
 .venv/bin/python tests/test_scale.py
 ```
 
-**`test_smoke.py`** — 33 integration tests against the eight real files in
+**`test_smoke.py`** — 44 integration tests against the eight real files in
 `downloads_test/`: extraction, dates, provenance, blurring, the manifest
 schema, both viewers. It asserts that the input folder is byte-for-byte
 unchanged by a run and that the ZIP is never extracted.
@@ -419,10 +402,8 @@ If you add an extractor, add its pathological case there.
 ```
 dldiary/
   manifest.py      index.json — schema, caps, sanitizing, atomic save
-  check.py         standalone validation of manifest, previews and viewers
-  scan.py          top-level walk, stable ids, duplicate keys
+  scan.py          top-level walk, stable ids, dates, duplicate keys
   provenance.py    xattr → download date, source app, source URL
-  dates.py         candidates and precedence
   thumbs.py        Pillow resize/encode and the card renderer
   indexer.py       the pass that ties it together
   extractors/      one module per file kind, failures isolated

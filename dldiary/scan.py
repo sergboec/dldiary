@@ -1,6 +1,6 @@
 """Walk the input folder — top level only, read-only, never recursing.
 
-Produces bare `Item`s: identity, size, kind. Dates, provenance and previews are
+Produces bare `Item`s: identity, size, kind, date. Provenance and previews are
 filled in by later stages.
 """
 
@@ -67,6 +67,10 @@ def scan(input_dir: Path, *, skip_larger_than: int | None = None) -> Iterator[It
 
     Directories are not recursed into and not indexed — the diary is about
     files that arrived, and a folder is a container, not an event.
+
+    The entry's date is the file's modification time, taken as it stands:
+    the same value Finder shows in its Date Modified column, so the diary and
+    the folder it came from can never disagree about when something happened.
     """
     input_dir = input_dir.expanduser().resolve()
     if not input_dir.is_dir():
@@ -92,6 +96,7 @@ def scan(input_dir: Path, *, skip_larger_than: int | None = None) -> Iterator[It
             mime=mime_for_ext(ext),
             size=size,
             src_path=str(path),
+            date=datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds"),
             indexed_at=datetime.now().isoformat(timespec="seconds"),
         )
 

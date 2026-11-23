@@ -155,10 +155,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "command", nargs="?", default="all",
-        choices=("all", "index", "render", "check"),
+        choices=("all", "index", "render"),
         help="all (default): index then render; index: previews + manifest; "
-             "render: viewers only, from the existing manifest; "
-             "check: validate the manifest, previews and viewers",
+             "render: viewers only, from the existing manifest",
     )
     p.add_argument("--version", action="version", version=f"dldiary {__version__}")
 

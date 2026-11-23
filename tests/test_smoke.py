@@ -18,18 +18,18 @@ import shutil
 import sys
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from dldiary import SCHEMA_VERSION                          # noqa: E402
-from dldiary import dates, manifest as manifest_io          # noqa: E402
+from dldiary import manifest as manifest_io                 # noqa: E402
 from dldiary.config import Config, human_size, parse_size   # noqa: E402
 from dldiary.extractors.base import (                       # noqa: E402
     looks_like_prose, title_from_name,
 )
-from dldiary import check                                   # noqa: E402
 from dldiary.indexer import index                           # noqa: E402
 from dldiary.provenance import domain_of                    # noqa: E402
 from dldiary.scan import scan                               # noqa: E402
@@ -73,8 +73,16 @@ class TestIndex(CorpusTestCase):
         for item in self.manifest.items:
             with self.subTest(item.name):
                 self.assertTrue(item.date, "no anchor date")
-                self.assertNotEqual(item.date_source, "unknown")
                 self.assertTrue(item.previews, "no preview generated")
+
+    def test_the_date_is_the_files_modification_time(self):
+        """The one source of truth: what Finder shows is what the diary shows."""
+        for item in self.manifest.items:
+            with self.subTest(item.name):
+                mtime = datetime.fromtimestamp(
+                    Path(item.src_path).stat().st_mtime
+                ).isoformat(timespec="seconds")
+                self.assertEqual(item.date, mtime)
 
     def test_preview_files_exist_and_reopen(self):
         from PIL import Image
@@ -111,7 +119,6 @@ class TestProvenance(CorpusTestCase):
         self.assertEqual(item.source.get("domain"), "eventim.de")
         self.assertEqual(item.source.get("app"), "Firefox")
         self.assertEqual(item.day, "2026-10-24")
-        self.assertEqual(item.date_source, "quarantine")
         self.assertIn("Ticket", item.summary)
 
     def test_telegram_image(self):
@@ -262,22 +269,13 @@ class TestBlur(unittest.TestCase):
                 self.assertFalse(any(p.blurred for p in item.previews))
                 self.assertNotIn("text_suppressed", item.meta)
 
-    def test_check_passes_and_catches_a_sharp_preview(self):
-        self.assertEqual(
-            [str(p) for p in check.run(self.cfg) if p.level == "error"], []
-        )
-        # Simulate an extractor that bypassed Context.save_preview.
-        data = json.loads(self.cfg.manifest_path.read_text(encoding="utf-8"))
-        for entry in data["items"]:
-            if entry["kind"] == "pdf":
-                entry["previews"][0]["blurred"] = False
-                break
-        self.cfg.manifest_path.write_text(json.dumps(data), encoding="utf-8")
-        try:
-            errors = [p for p in check.run(self.cfg) if p.level == "error"]
-            self.assertTrue(any("not blurred" in p.message for p in errors))
-        finally:
-            manifest_io.save(self.manifest, self.cfg.manifest_path)
+    def test_every_pdf_preview_is_marked_blurred(self):
+        for item in self.manifest.items:
+            if item.kind != "pdf":
+                continue
+            with self.subTest(item.name):
+                self.assertTrue(item.previews)
+                self.assertTrue(all(p.blurred for p in item.previews))
 
     def test_radius_scales_with_thumbnail_size(self):
         self.assertEqual(Config(thumb_size=512,
@@ -409,41 +407,6 @@ def _edge_energy(path: Path) -> float:
         return ImageStat.Stat(edges).stddev[0]
 
 
-class TestDates(unittest.TestCase):
-
-    def test_filename_patterns(self):
-        cases = {
-            "2026-09-13 14.28.18.mp4": (2026, 9, 13, 14),
-            "2026-04-11.pdf": (2026, 4, 11, 0),
-            "20260222-ring-sizer.stl": (2026, 2, 22, 0),
-            "31-10-2026--Ticket.pdf": (2026, 10, 31, 0),
-        }
-        for name, (y, m, d, h) in cases.items():
-            with self.subTest(name):
-                got = dates.from_filename(name)
-                self.assertIsNotNone(got, f"no date found in {name}")
-                self.assertEqual((got.year, got.month, got.day, got.hour),
-                                 (y, m, d, h))
-
-    def test_digit_runs_are_not_dates(self):
-        """An invoice number must never be read as a date."""
-        for name in ("175802554.pdf", "1000007509.jpg", "541959.pdf",
-                     "1787554245741.pdf", "28302466111.pdf"):
-            with self.subTest(name):
-                self.assertIsNone(dates.from_filename(name))
-
-    def test_impossible_dates_rejected(self):
-        self.assertIsNone(dates.from_filename("2026-13-45.pdf"))
-        self.assertIsNone(dates.from_filename("1832-01-01.pdf"))
-
-    def test_exif_parsing(self):
-        got = dates.parse_exif_datetime("2019:07:14 09:31:02")
-        self.assertIsNotNone(got)
-        self.assertEqual((got.year, got.month, got.day), (2019, 7, 14))
-        self.assertIsNone(dates.parse_exif_datetime("0000:00:00 00:00:00"))
-        self.assertIsNone(dates.parse_exif_datetime(""))
-
-
 class TestRepeatability(CorpusTestCase):
     """The tool is one-shot: a second run rebuilds, it does not accumulate."""
 
@@ -454,8 +417,8 @@ class TestRepeatability(CorpusTestCase):
         self.assertEqual({i.id for i in again.items},
                          {i.id for i in self.manifest.items})
         self.assertEqual(
-            [(i.id, i.date, i.date_source) for i in again.sorted_items()],
-            [(i.id, i.date, i.date_source) for i in self.manifest.sorted_items()],
+            [(i.id, i.date) for i in again.sorted_items()],
+            [(i.id, i.date) for i in self.manifest.sorted_items()],
         )
 
     def test_vanished_file_leaves_no_entry(self):
@@ -500,12 +463,15 @@ class TestManifestShape(CorpusTestCase):
         self.assertEqual(data["schema"], SCHEMA_VERSION)
         self.assertEqual(data["stats"]["items"], EXPECTED_FILES)
 
+        # Days are mtime days. `31-10-2026--Ticket-...pdf` lands on the 26th,
+        # when it was last written, not on the 31st its name advertises.
         self.assertEqual(
             sorted(data["by_day"]),
             ["2026-10-23", "2026-10-24", "2026-10-26", "2026-10-28",
-             "2026-10-29", "2026-10-31"],
+             "2026-10-29"],
         )
         self.assertEqual(data["by_day"]["2026-10-23"]["count"], 2)
+        self.assertEqual(data["by_day"]["2026-10-26"]["count"], 2)
         self.assertEqual(data["by_day"]["2026-10-29"]["count"], 2)
 
         counted = sum(d["count"] for d in data["by_day"].values())
@@ -569,7 +535,7 @@ class TestViewers(CorpusTestCase):
         self.assertEqual(
             notes,
             ["2026-10-23.md", "2026-10-24.md", "2026-10-26.md",
-             "2026-10-28.md", "2026-10-29.md", "2026-10-31.md"],
+             "2026-10-28.md", "2026-10-29.md"],
         )
 
     def test_rerender_is_deterministic(self):

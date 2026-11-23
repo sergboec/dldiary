@@ -5,10 +5,9 @@ diary, and then you clear the downloads folder out. So there is no reuse
 cache, no fingerprint comparison and no `--force`: every run reads every
 file and builds the manifest from nothing.
 
-Order matters. Provenance is read before extraction so an extractor can see
-where a file came from; filesystem and filename dates are seeded before
-extraction so a richer date found inside the file simply outranks them; the
-anchor is resolved last, once every candidate is in.
+Provenance is read before extraction, so an extractor can see where a file
+came from. The date needs no stage at all: `scan` sets it from the file's
+modification time.
 """
 
 from __future__ import annotations
@@ -18,9 +17,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import dates, extractors, provenance
+from . import extractors, provenance
 from .config import Config, human_size
-from .manifest import Item, Manifest
+from .manifest import Manifest
 from .scan import scan
 from .viewers import assets
 
@@ -65,9 +64,8 @@ def index(cfg: Config) -> tuple[Manifest, IndexReport]:
             manifest.items.append(item)
             continue
 
-        _enrich(item, path)
+        item.source = provenance.collect(path)
         extractors.run(item, path, ctx, registry)
-        dates.resolve(item)
 
         manifest.items.append(item)
         report.previews += len(item.previews)
@@ -76,22 +74,13 @@ def index(cfg: Config) -> tuple[Manifest, IndexReport]:
         if cfg.verbose:
             mark = "!" if item.error else "+"
             print(f"  {mark} {item.name} → {len(item.previews)} preview(s), "
-                  f"{item.date[:16] or 'no date'} ({item.date_source})")
+                  f"{item.date[:16] or 'no date'}")
 
     if not cfg.dry_run:
         report.pruned = _prune_previews(manifest, cfg)
 
     report.seconds = time.monotonic() - started
     return manifest, report
-
-
-def _enrich(item: Item, path: Path) -> None:
-    """Provenance and the dates that need no file parsing."""
-    item.source = provenance.collect(path)
-    dates.seed_candidates(item, path)
-    downloaded = item.source.get("downloaded_at")
-    if downloaded:
-        item.date_candidates["quarantine"] = downloaded
 
 
 def _prune_previews(manifest: Manifest, cfg: Config) -> int:

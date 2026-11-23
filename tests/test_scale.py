@@ -34,7 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from dldiary import check, manifest as manifest_io                  # noqa: E402
+from dldiary import manifest as manifest_io                         # noqa: E402
 from dldiary.config import Config                                   # noqa: E402
 from dldiary.indexer import index                                   # noqa: E402
 from dldiary.manifest import MAX_SUMMARY, MAX_URL, Item, Manifest   # noqa: E402
@@ -63,7 +63,6 @@ def synthetic_manifest(n: int = N_ITEMS, *, hostile: bool = True) -> Manifest:
             size=1000 + i,
             src_path=f"/synthetic/file-{i:04d}.pdf",
             date=when.isoformat(timespec="seconds"),
-            date_source="quarantine",
             title=f"Document {i}",
             summary="lorem ipsum " * 10,
         )
@@ -92,7 +91,7 @@ def synthetic_manifest(n: int = N_ITEMS, *, hostile: bool = True) -> Manifest:
             id=f"twin{n}", name=f"beatles.{ext}", ext=ext.lower(),
             kind=kind, mime="application/octet-stream", size=4096,
             src_path=f"/synthetic/beatles.{ext}", date=day,
-            date_source="quarantine", title="beatles",
+            title="beatles",
         )
         manifest.items.append(twin)
 
@@ -162,12 +161,6 @@ class HostileManifestTest(unittest.TestCase):
         self.assertLess(size, 1_000_000,
                         "a single data: URI is dominating the manifest again")
 
-    def test_check_passes_on_a_normalized_manifest(self):
-        problems = [p for p in check.run(self.cfg) if p.level == "error"]
-        # Previews do not exist in this synthetic corpus; ignore those.
-        real = [p for p in problems if "preview" not in p.message]
-        self.assertEqual([str(p) for p in real], [])
-
 
 class ViewerScaleTest(unittest.TestCase):
     """Viewers must represent every entry, and stay a usable size."""
@@ -204,7 +197,7 @@ class ViewerScaleTest(unittest.TestCase):
             manifest.items.append(Item(
                 id=f"id{i}", name="same.pdf", ext="pdf", kind="pdf",
                 mime="application/pdf", size=1, src_path=f"/x/{i}/same.pdf",
-                date="2026-01-01T00:00:00", date_source="birth",
+                date="2026-01-01T00:00:00",
             ))
         # Identical day, name and extension: only the id separates them.
         vault = obsidian_viewer.render(manifest, self.cfg)
@@ -227,7 +220,7 @@ class ViewerScaleTest(unittest.TestCase):
             .split('id="data">', 1)[1].split("</script>", 1)[0]
         )
         row = payload["items"][0]
-        for leaked in ("fingerprint", "content_key", "date_candidates",
+        for leaked in ("fingerprint", "content_key",
                        "indexed_at", "mime"):
             self.assertNotIn(leaked, row)
 
@@ -246,53 +239,13 @@ class ViewerScaleTest(unittest.TestCase):
             id="xss", name="</script><script>alert(1)</script>.pdf",
             ext="pdf", kind="pdf", mime="application/pdf", size=1,
             src_path="/x/a.pdf", date="2026-01-01T00:00:00",
-            date_source="birth", summary="</script>",
+            summary="</script>",
         ))
         out = html_viewer.render(manifest, self.cfg)
         text = out.read_text(encoding="utf-8")
         blob = text.split('id="data">', 1)[1].split("</script>", 1)[0]
         # If the name leaked verbatim, the blob is truncated and invalid.
         json.loads(blob)
-
-
-class BlurLeakTest(unittest.TestCase):
-    """With blur on, no text from a blurred kind may reach any output."""
-
-    def test_nothing_from_a_blurred_kind_is_written_anywhere(self):
-        tmp = Path(tempfile.mkdtemp(prefix="dldiary-blurleak-"))
-        try:
-            cfg = Config(input=tmp / "in", output=tmp / "out",
-                         blur_kinds=frozenset({"pdf"}))
-            manifest = Manifest(input="/synthetic")
-            secret = "Nachname-Geheim-99887766"
-            for i in range(6):
-                item = Item(
-                    id=f"blur{i:08x}", name=f"ticket-{i}.pdf", ext="pdf",
-                    kind="pdf", mime="application/pdf", size=2048,
-                    src_path=f"/synthetic/ticket-{i}.pdf",
-                    date=f"2026-0{i + 1}-15T10:00:00",
-                    date_source="quarantine",
-                )
-                # An extractor that ignored the policy would leave these.
-                item.title = secret
-                item.summary = f"{secret} seat 14F"
-                item.meta = {"author": secret, "pages": 2}
-                manifest.items.append(item)
-                item.normalize()
-
-            manifest_io.save(manifest, cfg.manifest_path)
-            html_viewer.render(manifest, cfg)
-            obsidian_viewer.render(manifest, cfg)
-
-            # check() must notice, rather than the leak passing silently.
-            errors = [p for p in check.run(cfg) if p.level == "error"]
-            self.assertTrue(
-                any("text stored for a blurred kind" in p.message
-                    for p in errors),
-                "check did not flag stored text for a blurred kind",
-            )
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class OfficeRedactionTest(unittest.TestCase):

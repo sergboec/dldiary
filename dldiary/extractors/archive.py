@@ -12,10 +12,9 @@ from __future__ import annotations
 
 import tarfile
 import zipfile
-from datetime import datetime
 from pathlib import Path
 
-from .. import dates, thumbs
+from .. import thumbs
 from ..config import human_size
 from ..manifest import Item
 from .base import Context, Extractor
@@ -41,9 +40,9 @@ class ArchiveExtractor(Extractor):
 
     def extract(self, item: Item, path: Path, ctx: Context) -> None:
         if zipfile.is_zipfile(path):
-            names, total, newest = self._zip(path)
+            names, total = self._zip(path)
         elif tarfile.is_tarfile(path):
-            names, total, newest = self._tar(path)
+            names, total = self._tar(path)
         else:
             self._unsupported(item, ctx)
             return
@@ -62,10 +61,6 @@ class ArchiveExtractor(Extractor):
         item.meta["top_entries"] = interesting[:MAX_LISTED]
         item.summary = ", ".join(interesting[:12])
 
-        # An archive's newest member dates the archive better than nothing.
-        if newest:
-            dates.add_candidate(item, "archive_mtime", newest)
-
         lines = [f"{len(interesting)} files · {human_size(total)}", ""]
         lines += [f"  {n[:58]}" for n in interesting[:14]]
         if len(interesting) > 14:
@@ -76,35 +71,19 @@ class ArchiveExtractor(Extractor):
 
     # -- readers ------------------------------------------------------------
 
-    def _zip(self, path: Path) -> tuple[list[str], int, datetime | None]:
+    def _zip(self, path: Path) -> tuple[list[str], int]:
         with zipfile.ZipFile(path) as zf:
             infos = zf.infolist()
-        total = sum(i.file_size for i in infos)
-        newest: datetime | None = None
-        for info in infos:
-            try:
-                dt = datetime(*info.date_time)
-            except (ValueError, TypeError):
-                continue
-            if dates.plausible(dt) and (newest is None or dt > newest):
-                newest = dt
-        return [i.filename for i in infos], total, newest
+        return [i.filename for i in infos], sum(i.file_size for i in infos)
 
-    def _tar(self, path: Path) -> tuple[list[str], int, datetime | None]:
+    def _tar(self, path: Path) -> tuple[list[str], int]:
         names: list[str] = []
         total = 0
-        newest: datetime | None = None
         with tarfile.open(path) as tf:
             for member in tf:
                 names.append(member.name)
                 total += member.size
-                try:
-                    dt = datetime.fromtimestamp(member.mtime)
-                except (ValueError, OSError, OverflowError):
-                    continue
-                if dates.plausible(dt) and (newest is None or dt > newest):
-                    newest = dt
-        return names, total, newest
+        return names, total
 
     def _unsupported(self, item: Item, ctx: Context) -> None:
         label = {"7z": "7-Zip", "rar": "RAR"}.get(item.ext, item.ext.upper())

@@ -32,28 +32,16 @@ def main(argv: list[str] | None = None) -> int:
     if not _preflight():
         return 2
     try:
-        if cfg.command == "check":
-            return _run_check(cfg)
         if cfg.command in ("all", "index"):
             if not _run_index(cfg):
                 return 1
         if cfg.command in ("all", "render"):
             if not _run_render(cfg):
                 return 1
-        # A clean run should also be a valid one.
-        if cfg.command == "all" and not cfg.dry_run:
-            _run_check(cfg)
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 130
     return 0
-
-
-def _run_check(cfg: Config) -> int:
-    from . import check
-
-    print(f"checking {_rel(cfg.manifest_path)}")
-    return check.report(check.run(cfg), verbose=cfg.verbose)
 
 
 # -- stages -----------------------------------------------------------------

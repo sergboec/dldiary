@@ -1,8 +1,8 @@
 """Images — Pillow.
 
-Beyond the thumbnail, images carry the best dates in the whole folder: a
-photo's EXIF `DateTimeOriginal` is when the moment happened, which is what a
-diary wants, rather than when the file was saved.
+The thumbnail is the point. The one thing worth reading out of EXIF besides
+it is the location: "this photo was taken there" is a diary entry, while the
+camera body, the aperture and the ISO are not.
 
 SVG has no raster form, so it is handed to PyMuPDF, which renders it.
 """
@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from .. import dates, thumbs
+from .. import thumbs
 from ..kinds import VECTOR_IMAGE_EXTS
 from ..manifest import Item
 from .base import Context, Extractor, MissingDependency
@@ -22,19 +22,6 @@ try:
 except ImportError:  # pragma: no cover
     Image = None  # type: ignore[assignment]
     ExifTags = None  # type: ignore[assignment]
-
-# EXIF tags worth keeping in the manifest, mapped to friendly names.
-_EXIF_KEEP = {
-    "Make": "camera_make",
-    "Model": "camera_model",
-    "LensModel": "lens",
-    "FNumber": "aperture",
-    "ExposureTime": "exposure",
-    "ISOSpeedRatings": "iso",
-    "FocalLength": "focal_length",
-    "Software": "software",
-}
-
 
 class ImageExtractor(Extractor):
     name = "image"
@@ -52,66 +39,28 @@ class ImageExtractor(Extractor):
             item.meta["mode"] = img.mode
             if getattr(img, "n_frames", 1) > 1:
                 item.meta["frames"] = img.n_frames  # animated GIF/WebP
-            self._read_exif(item, path)
+            self._read_location(item, path)
             ctx.save_preview(img, item, role="poster", seq=0)
 
     # -- EXIF ---------------------------------------------------------------
 
-    def _read_exif(self, item: Item, path: Path) -> None:
-        """Pull the capture date, camera and GPS out of EXIF.
+    def _read_location(self, item: Item, path: Path) -> None:
+        """Pull the GPS coordinates out of EXIF, if the camera recorded any.
 
         Re-opened rather than reusing the transposed image, because
         `exif_transpose` strips the orientation tag and may drop the block.
         """
         try:
             with Image.open(path) as raw:
-                exif = raw.getexif()
-        except Exception:
-            return
-        if not exif:
-            return
-
-        ifd = {}
-        try:
-            ifd = exif.get_ifd(ExifTags.IFD.Exif) or {}
-        except Exception:
-            pass
-
-        def value_for(name: str):
-            # Pillow names every tag id in the ExifTags.Base enum, so a name
-            # costs one lookup. Inverting the whole 380-entry TAGS table —
-            # once per image — bought nothing.
-            tid = getattr(ExifTags.Base, name, None)
-            if tid is None:
-                return None
-            return ifd.get(tid, exif.get(tid))
-
-        # Capture date: the Exif IFD original beats the generic DateTime.
-        for field in ("DateTimeOriginal", "DateTimeDigitized", "DateTime"):
-            raw_value = value_for(field)
-            if raw_value:
-                dt = dates.parse_exif_datetime(str(raw_value))
-                if dt:
-                    dates.add_candidate(item, "exif", dt)
-                    break
-
-        for field, key in _EXIF_KEEP.items():
-            raw_value = value_for(field)
-            if raw_value not in (None, "", b""):
-                item.meta[key] = _simplify(raw_value)
-
-        self._read_gps(item, exif)
-
-    def _read_gps(self, item: Item, exif) -> None:
-        try:
-            gps = exif.get_ifd(ExifTags.IFD.GPSInfo) or {}
+                gps = raw.getexif().get_ifd(ExifTags.IFD.GPSInfo) or {}
         except Exception:
             return
         if not gps:
             return
 
         def coord(value_tag: str, ref_tag: str) -> float | None:
-            # Same as above, against ExifTags.GPS.
+            # Pillow names every GPS tag id in the ExifTags.GPS enum, so a
+            # name costs one lookup rather than a table inversion.
             dms = gps.get(getattr(ExifTags.GPS, value_tag, -1))
             ref = gps.get(getattr(ExifTags.GPS, ref_tag, -1))
             if not dms or len(dms) != 3:
@@ -149,22 +98,3 @@ class ImageExtractor(Extractor):
             pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
             img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
             ctx.save_preview(img, item, role="poster", seq=0)
-
-
-def _simplify(value):
-    """EXIF values include rationals and bytes; make them JSON-friendly."""
-    if isinstance(value, bytes):
-        return value.decode("utf-8", "replace").strip("\x00").strip()
-    if isinstance(value, tuple) and len(value) == 2:
-        try:
-            return round(value[0] / value[1], 4)
-        except (TypeError, ZeroDivisionError):
-            return str(value)
-    if hasattr(value, "numerator") and hasattr(value, "denominator"):
-        try:
-            return round(float(value), 4)
-        except (TypeError, ZeroDivisionError):
-            return str(value)
-    if isinstance(value, (int, float, str)):
-        return value.strip() if isinstance(value, str) else value
-    return str(value)
