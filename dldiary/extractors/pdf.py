@@ -14,7 +14,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .. import thumbs
 from ..manifest import Item
 from .base import (
     Context, Extractor, MissingDependency, clean_text, looks_like_prose,
@@ -26,10 +25,9 @@ except ImportError:  # pragma: no cover
     pymupdf = None  # type: ignore[assignment]
 
 try:
-    from PIL import Image, ImageFilter
+    from PIL import Image
 except ImportError:  # pragma: no cover
     Image = None  # type: ignore[assignment]
-    ImageFilter = None  # type: ignore[assignment]
 
 MAX_PAGE_PREVIEWS = 3          # beyond the poster
 
@@ -45,25 +43,15 @@ class PdfExtractor(Extractor):
         if Image is None:
             raise MissingDependency("pillow", "pillow==12.3.0")
 
-        # When the previews are being blurred, nothing read off the page may
-        # be kept. The summary and the title both come from the same text
-        # the blur is there to hide — "Jewgeni Onegin" and "Sergei Boitsov"
-        # are first lines lifted straight off these tickets — so storing
-        # them would make the blur decorative.
-        private = ctx.suppress_text(item)
-        below = None if private else ctx.cfg.blur_text_below
-
         with pymupdf.open(path) as doc:
             if doc.needs_pass:
                 # Encrypted: no text, no render. Still a diary entry.
                 item.meta["encrypted"] = True
-                if not private:
-                    item.summary = "Password-protected document."
+                item.summary = "Password-protected document."
                 return
 
             item.meta["pages"] = doc.page_count
-            self._read_metadata(item, doc,
-                                private=private or bool(below))
+            self._read_metadata(item, doc)
 
             text_parts: list[str] = []
             for index in range(min(doc.page_count, MAX_PAGE_PREVIEWS + 1)):
@@ -71,30 +59,12 @@ class PdfExtractor(Extractor):
                 if index == 0:
                     item.meta["page_width"] = round(page.rect.width)
                     item.meta["page_height"] = round(page.rect.height)
-                # Parsed once per page and read twice: the size rule needs
-                # these spans for its blur rectangles, and the text it keeps
-                # comes off the very same ones — that is what makes the two
-                # agree. PyMuPDF rebuilds the dictionary on every call.
-                lines = _text_lines(page) if ctx.cfg.blur_text_below else []
-                self._render(item, page, lines, ctx,
+                self._render(item, page, ctx,
                              role="poster" if index == 0 else "page", seq=index)
-                if private:
-                    continue
                 try:
-                    # Text that is blurred in the image must not be stored
-                    # in the manifest either, or the blur is decorative.
-                    if below:
-                        text_parts.append(_large_text(lines, below))
-                    else:
-                        text_parts.append(page.get_text())
+                    text_parts.append(page.get_text())
                 except Exception:
                     pass
-
-            if private:
-                item.meta["text_suppressed"] = True
-                return
-            if below:
-                item.meta["text_below_pt_dropped"] = below
 
             body = "\n".join(text_parts)
             if not body.strip():
@@ -109,55 +79,25 @@ class PdfExtractor(Extractor):
 
     # -- helpers ------------------------------------------------------------
 
-    def _render(self, item: Item, page, lines: list[list[dict]], ctx: Context,
+    def _render(self, item: Item, page, ctx: Context,
                 *, role: str, seq: int) -> None:
         longest = max(page.rect.width, page.rect.height, 1)
         zoom = min(ctx.thumb_size / longest, 4.0)
         pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
         img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+        ctx.save_preview(img, item, role=role, seq=seq)
 
-        redacted = False
-        below = ctx.cfg.blur_text_below
-        if below:
-            if not lines:
-                # No text layer at all — a scan, or text drawn as curves.
-                # There is nothing to measure, so the safe reading of "hide
-                # the fine print" is to hide the page.
-                item.meta["blurred_whole_page"] = "no text layer to measure"
-                img = img.filter(
-                    ImageFilter.GaussianBlur(ctx.cfg.default_blur_radius))
-                redacted = True
-            else:
-                rects = [_scale(span["bbox"], zoom)
-                         for spans in lines for span in spans
-                         if span["size"] < below]
-                img = thumbs.blur_regions(img, rects,
-                                          _region_radius(below, zoom))
-                redacted = bool(rects)
-
-        preview = ctx.save_preview(img, item, role=role, seq=seq)
-        if redacted and preview is not None:
-            preview.blurred = True
-
-    def _read_metadata(self, item: Item, doc, *, private: bool = False) -> None:
+    def _read_metadata(self, item: Item, doc) -> None:
         meta = doc.metadata or {}
 
-        # `author`, `subject`, `keywords` and the document title are
-        # authored content and routinely hold a person's name. Across 84
-        # real PDFs the author field held "Sergey Boytsov", four other
-        # people's names, and in one case a full street address — so these
-        # go whenever any blurring is on, not only for a whole-page blur.
-        # Document metadata has no font size for a size rule to measure.
-        # `creator`, `producer` and `format` name the software, so they stay.
-        keys = ("creator", "producer", "format") if private else (
-            "author", "subject", "keywords", "creator", "producer", "format")
-        for key in keys:
+        for key in ("author", "subject", "keywords",
+                    "creator", "producer", "format"):
             value = (meta.get(key) or "").strip()
             if value:
                 item.meta[key] = value
 
         title = (meta.get("title") or "").strip()
-        if title and not private and not _is_junk_title(title):
+        if title and not _is_junk_title(title):
             item.title = title
 
     @staticmethod
@@ -171,73 +111,6 @@ class PdfExtractor(Extractor):
             if letters >= 4 and letters / len(line) >= 0.5:
                 return line
         return ""
-
-
-def _large_text(lines: list[list[dict]], below: float) -> str:
-    """The page's text, minus every span set below `below` points.
-
-    Line structure is kept, so what survives still reads as lines rather
-    than as a bag of words.
-    """
-    out: list[str] = []
-    for spans in lines:
-        kept = [s.get("text", "") for s in spans if s.get("size", 0) >= below]
-        text = " ".join(t.strip() for t in kept if t.strip())
-        # Barcode fonts draw their bars as large glyphs, so a size filter
-        # alone keeps lines like `Ë*Æ{#.N/{,.nÌ`.
-        if text and not _is_glyph_soup(text):
-            out.append(text)
-    return "\n".join(out)
-
-
-def _is_glyph_soup(line: str) -> bool:
-    """True for a line that is symbols rather than language."""
-    stripped = line.strip()
-    if len(stripped) < 3:
-        return False
-    odd = sum(1 for c in stripped
-              if not (c.isalnum() or c.isspace() or c in ".,:;!?()[]-/&@€$£%+'\""))
-    return odd / len(stripped) > 0.25
-
-
-def _text_lines(page) -> list[list[dict]]:
-    """The page's text lines, each as its spans with font size and bbox.
-
-    Grouping by line rather than returning one flat list is what lets a
-    single parse serve both readers: the blur only cares about each span's
-    size and box, but the kept text has to come out as lines.
-
-    An empty result means no text layer at all — a scan, or text drawn as
-    curves — which the caller treats as "nothing to measure".
-    """
-    try:
-        blocks = page.get_text("dict").get("blocks", [])
-    except Exception:
-        return []
-    lines: list[list[dict]] = []
-    for block in blocks:
-        for line in block.get("lines", []):
-            spans = [s for s in line.get("spans", [])
-                     if s.get("text", "").strip()]
-            if spans:
-                lines.append(spans)
-    return lines
-
-
-def _scale(bbox, zoom: float) -> tuple[float, float, float, float]:
-    """A PDF-point bounding box in rendered pixels."""
-    x0, y0, x1, y1 = bbox
-    return (x0 * zoom, y0 * zoom, x1 * zoom, y1 * zoom)
-
-
-def _region_radius(below: float, zoom: float) -> float:
-    """Enough blur to destroy text of the threshold size, and no more.
-
-    Tied to how tall that text actually renders: a radius suited to a whole
-    page would bleed far outside a six-pixel line of fine print and smear
-    the large text next to it.
-    """
-    return max(1.8, below * zoom * 0.55)
 
 
 def _is_junk_title(title: str) -> bool:

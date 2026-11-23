@@ -16,7 +16,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from .config import human_size
 from .manifest import Item, Preview
@@ -107,19 +107,10 @@ def save(
     role: str = "poster",
     seq: int = 0,
     max_px: int = 512,
-    blur: float = 0.0,
 ) -> Preview:
-    """Fit, encode and register one preview. Returns the manifest entry.
-
-    `blur` is applied *after* the resize, so the radius is in final pixels
-    and the filter runs over a thumbnail rather than a full page render.
-    It is baked into the file on purpose: there is no sharp copy anywhere
-    for a viewer, a screenshot or a recipient to get at.
-    """
+    """Fit, encode and register one preview. Returns the manifest entry."""
     img = _flatten(img)
     img.thumbnail((max_px, max_px), Image.Resampling.LANCZOS)
-    if blur > 0:
-        img = img.filter(ImageFilter.GaussianBlur(blur))
 
     name = f"{item.id}-{role[0]}{seq}.webp"
     previews_dir.mkdir(parents=True, exist_ok=True)
@@ -129,7 +120,6 @@ def save(
     preview = Preview(
         role=role, seq=seq, path=f"previews/{name}",
         w=img.width, h=img.height, bytes=out.stat().st_size,
-        blurred=blur > 0,
     )
     item.previews.append(preview)
     return preview
@@ -143,42 +133,15 @@ def save_bytes(
     role: str = "cover",
     seq: int = 0,
     max_px: int = 512,
-    blur: float = 0.0,
 ) -> Preview | None:
     """Same, for an image already embedded in a file (cover art, docProps)."""
     try:
         with Image.open(io.BytesIO(data)) as img:
             img.load()
             return save(img, item, previews_dir, role=role, seq=seq,
-                        max_px=max_px, blur=blur)
+                        max_px=max_px)
     except Exception:
         return None
-
-
-def blur_regions(img: Image.Image, rects: list[tuple[float, float, float, float]],
-                 radius: float, pad: float = 1.5) -> Image.Image:
-    """Blur only the given rectangles, leaving the rest of the image sharp.
-
-    Done as one blur of the whole image composited through a mask, rather
-    than cropping and pasting each rectangle: a single filter pass, and no
-    visible seam where one rectangle ends and the next begins. The mask is
-    itself softened slightly so a blurred patch fades into the page instead
-    of sitting in a hard-edged box.
-    """
-    if not rects or radius <= 0:
-        return img
-
-    img = img.convert("RGB")
-    mask = Image.new("L", img.size, 0)
-    draw = ImageDraw.Draw(mask)
-    for x0, y0, x1, y1 in rects:
-        draw.rectangle(
-            [x0 - pad, y0 - pad, x1 + pad, y1 + pad], fill=255
-        )
-    mask = mask.filter(ImageFilter.GaussianBlur(pad))
-
-    return Image.composite(img.filter(ImageFilter.GaussianBlur(radius)),
-                           img, mask)
 
 
 def open_oriented(path: Path) -> Image.Image:

@@ -51,7 +51,6 @@ class Preview:
     w: int = 0
     h: int = 0
     bytes: int = 0
-    blurred: bool = False     # rendered deliberately unreadable
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -65,7 +64,6 @@ class Preview:
             w=int(d.get("w", 0)),
             h=int(d.get("h", 0)),
             bytes=int(d.get("bytes", 0)),
-            blurred=bool(d.get("blurred", False)),
         )
 
 

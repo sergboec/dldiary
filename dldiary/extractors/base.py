@@ -54,19 +54,18 @@ class Context:
 
     def save_preview(self, img, item: Item, *, role: str = "poster",
                      seq: int = 0):
-        """Write one preview for `item`, applying the run's policy.
+        """Write one preview for `item`.
 
         Every extractor goes through here rather than calling `thumbs.save`
-        directly, so no extractor can forget to blur a kind that is supposed
-        to be blurred. A policy you have to remember to apply in thirteen
-        places is not a policy — the same reason the manifest sanitizes on
-        write instead of trusting its callers.
+        directly: the output directory, the size limit and the file naming
+        are settled in one place, so thirteen call sites cannot drift on
+        any of them — the same reason the manifest sanitizes on write
+        instead of trusting its callers.
         """
         return thumbs.save(
             img, item, self.previews_dir,
             role=role, seq=seq,
             max_px=self.thumb_size,
-            blur=self.cfg.blur_radius_for(item.kind),
         )
 
     def save_preview_bytes(self, data: bytes, item: Item, *,
@@ -76,16 +75,7 @@ class Context:
             data, item, self.previews_dir,
             role=role, seq=seq,
             max_px=self.thumb_size,
-            blur=self.cfg.blur_radius_for(item.kind),
         )
-
-    def suppress_text(self, item: Item) -> bool:
-        """True when this kind's extracted text must not be stored.
-
-        Blurring the page render while the manifest still carries the name
-        and booking reference off that same page would only look private.
-        """
-        return self.cfg.blurs(item.kind)
 
     def warn_once(self, key: str, message: str) -> None:
         """Report a condition that will repeat, exactly once per run."""

@@ -248,63 +248,6 @@ class ViewerScaleTest(unittest.TestCase):
         json.loads(blob)
 
 
-class OfficeRedactionTest(unittest.TestCase):
-    """Office files have no usable font size, so they go dark entirely."""
-
-    def _docx(self, path: Path, author: str, body: str) -> None:
-        import zipfile
-
-        with zipfile.ZipFile(path, "w") as z:
-            z.writestr("[Content_Types].xml", "<Types/>")
-            z.writestr("docProps/core.xml",
-                       '<?xml version="1.0"?>'
-                       '<cp:coreProperties '
-                       'xmlns:cp="http://schemas.openxmlformats.org/package/'
-                       '2006/metadata/core-properties" '
-                       'xmlns:dc="http://purl.org/dc/elements/1.1/">'
-                       f"<dc:title>Quarterly report</dc:title>"
-                       f"<dc:creator>{author}</dc:creator>"
-                       f"<cp:lastModifiedBy>{author}</cp:lastModifiedBy>"
-                       "</cp:coreProperties>")
-            z.writestr("word/document.xml",
-                       f"<w:document><w:body><w:p><w:r><w:t>{body}"
-                       "</w:t></w:r></w:p></w:body></w:document>")
-
-    def test_author_and_body_are_both_dropped(self):
-        tmp = Path(tempfile.mkdtemp(prefix="dldiary-office-"))
-        try:
-            inbox = tmp / "in"
-            inbox.mkdir()
-            self._docx(inbox / "report.docx", "Anna Klementyeva",
-                       "Prepared by Sergey Boytsov")
-
-            # Sharp first: the fields must really be there to start with.
-            plain, _ = index(Config(input=inbox, output=tmp / "sharp"))
-            item = plain.items[0]
-            self.assertEqual(item.meta.get("author"), "Anna Klementyeva")
-            self.assertIn("Boytsov", item.summary)
-
-            for flag in ({"blur_text_below": 12.0}, {"blur_pdf": True}):
-                kinds = frozenset({"document"}) | (
-                    frozenset({"pdf"}) if flag.get("blur_pdf") else frozenset())
-                cfg = Config(input=inbox, output=tmp / "out",
-                             blur_kinds=kinds,
-                             blur_text_below=flag.get("blur_text_below"))
-                manifest, _ = index(cfg)
-                item = manifest.items[0]
-                with self.subTest(flag=list(flag)[0]):
-                    self.assertEqual(item.summary, "")
-                    self.assertNotIn("author", item.meta)
-                    self.assertNotIn("last_modified_by", item.meta)
-                    self.assertTrue(item.meta.get("text_suppressed"))
-                    self.assertTrue(all(p.blurred for p in item.previews))
-                    blob = json.dumps(item.to_dict(), ensure_ascii=False)
-                    self.assertNotIn("Klementyeva", blob)
-                    self.assertNotIn("Boytsov", blob)
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
-
-
 class DeepScaleTest(unittest.TestCase):
     """A bigger corpus, to keep an eye on how cost grows."""
 

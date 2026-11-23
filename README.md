@@ -85,9 +85,6 @@ Output:
 | `--thumb-size PX` | longest edge of a preview (default 512) |
 | `--video-frames N` | extra frames per video beyond the poster (default 3) |
 | `--skip-larger-than` | e.g. `2G` — still indexed, but not opened |
-| `--blur-text-below PT` | blur the text a PDF sets below PT points, keep larger text sharp (default 12) |
-| `--blur-pdf` | blur every PDF preview entirely and store no text from one |
-| `--blur-radius PX` | override the blur strength (default scales from `--thumb-size`) |
 | `--only html\|obsidian` | render just one viewer |
 | `--obsidian-grain day` | one note per day instead of one per file |
 | `--inline-assets` | base64 the previews into `diary.html` — one portable file |
@@ -118,20 +115,6 @@ not open them, which is most of the time saved:
 .venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary --skip-larger-than 2G -v
 ```
 
-**A diary you can show someone.** Blurs the fine print on every PDF — names,
-addresses, booking references — while leaving the headline readable, so a
-ticket still says what you went to see:
-
-```bash
-.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary --blur-text-below
-```
-
-**Or hide the PDFs completely**, if even the event names are too much:
-
-```bash
-.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary --blur-pdf
-```
-
 **One file you can send.** Base64s the previews into the page, so
 `diary.html` stands alone with no `assets/` folder beside it:
 
@@ -156,7 +139,7 @@ switch Obsidian to one note per day, rebuild from the existing manifest:
 and the previous one is left alone:
 
 ```bash
-.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary-2026 --blur-pdf
+.venv/bin/python -m dldiary all --input ~/Downloads --output ~/diary-2026
 ```
 
 Then clear out Downloads — the diary no longer depends on it.
@@ -255,91 +238,6 @@ anything in them except a corrected `date:`.
 
 ---
 
----
-
-## Blurring PDFs
-
-86 of the 257 entries in a real Downloads folder are PDFs, mostly tickets
-and invoices. The sensitive part of a ticket is not what you went to see —
-it is your name, your street, and the booking and card numbers. On every
-ticket I measured, those are set in small type and the interesting part is
-set large:
-
-```
-17.3pt  JETHRO TULL                  10.0pt  Jewgeni Onegin
-11.3pt  TEMPODROM                     9.0pt  Schillertheater, Bismarckstraße 110, 10625 Berlin
-10.5pt  Donnerstag 05.Nov.26          8.0pt  Guten Tag Sergei Boitsov,
- 9.0pt  Sergei Boitsov                7.0pt  Oper von Pjotr I. Tschaikowski
- 7.6pt  Möckernstraße 10, 10963 Berlin
-```
-
-So the rule is a font size, and the size is the parameter:
-
-```bash
-.venv/bin/python -m dldiary all --blur-text-below        # 12pt
-.venv/bin/python -m dldiary all --blur-text-below 10     # keep more readable
-```
-
-Text below the threshold is blurred in the preview **and not stored** —
-it is kept out of the summary, the title, `index.json`, the HTML and the
-notes. Text at or above it stays sharp and searchable. The blur is baked
-into the `.webp`, so no sharp copy exists for a viewer, a screenshot or a
-recipient to get at, and only the rectangles holding small text are
-touched, so the page still looks like the page.
-
-The default of 12 was measured, not picked. Across 84 real PDFs — tickets,
-invoices, bank statements — counting how many still showed a name or a
-street at each threshold:
-
-| threshold | PDFs leaking a name or street | PDFs keeping a usable title |
-|---|---|---|
-| 10 pt | 19 | 81 |
-| 10.5 pt | 6 | 74 |
-| **12 pt** | **2** | **69** |
-| 14 pt | 2 | 48 |
-
-12 sits on a plateau: going to 14 costs 21 more titles and prevents nothing.
-The two that survived at 12 were CVs, where the name *is* the heading at
-28pt — no size rule reaches those. **Check it against your own documents**;
-if a name survives, raise it.
-
-Document metadata has no font size, so `author`, `subject` and `keywords`
-are dropped whenever any blurring is on. That matters more than it sounds:
-in this corpus the author field held five different people's names and,
-once, a full street address.
-
-Three things it does not cover:
-
-* **Images.** Barcodes, QR codes, signatures and scanned pages are not
-  text, so a size rule cannot see them. They stay sharp.
-* **PDFs with no text layer.** There is nothing to measure, so the whole
-  page is blurred rather than left readable. The entry records
-  `blurred_whole_page`.
-* **Filenames.** `31-10-2026--Ticket-01--28302466111-1.pdf` still shows its
-  own name; nothing here renames your files, and a file called
-  `conference - Yourname.pptx` announces itself.
-* **Surgical treatment for Office files.** A `.docx` or `.pptx` has no
-  usable font size to filter on — PowerPoint declares none at all on its
-  runs, inheriting them from slide layouts and masters. So Office files get
-  the blunt treatment instead: either blur flag blurs their preview whole,
-  drops their text, and drops `author`, `subject` and `lastModifiedBy`.
-  That last one is what actually leaked here — across this folder those
-  fields held five different people's names.
-* **Your home directory.** Every entry stores the file's path, so
-  `/Users/yourname/` appears throughout `index.json` and the page.
-
-### The blunt version
-
-`--blur-pdf` blurs every PDF preview end to end and stores no text from one
-at all — no summary, no title, no `author`, `subject` or `keywords`. It
-cannot miss, which the size rule can, and it covers barcodes. `pages`,
-`producer` and `format` stay either way: structural, not personal.
-
-Every preview goes through `Context.save_preview`, which applies the run's
-blur policy, so no extractor can forget it.
-
----
-
 ## The manifest is a contract
 
 One producer writes `index.json`; several consumers read it. When nothing
@@ -381,9 +279,9 @@ the same run has just written.
 .venv/bin/python tests/test_scale.py
 ```
 
-**`test_smoke.py`** — 44 integration tests against the eight real files in
-`downloads_test/`: extraction, dates, provenance, blurring, the manifest
-schema, both viewers. It asserts that the input folder is byte-for-byte
+**`test_smoke.py`** — 30 integration tests against the eight real files in
+`downloads_test/`: extraction, dates, provenance, the manifest schema,
+both viewers. It asserts that the input folder is byte-for-byte
 unchanged by a run and that the ZIP is never extracted.
 
 **`test_scale.py`** — the tests that were missing. The smoke suite passed
