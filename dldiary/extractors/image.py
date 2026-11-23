@@ -71,7 +71,6 @@ class ImageExtractor(Extractor):
         if not exif:
             return
 
-        tag_name = {v: k for k, v in ExifTags.TAGS.items()}
         ifd = {}
         try:
             ifd = exif.get_ifd(ExifTags.IFD.Exif) or {}
@@ -79,7 +78,10 @@ class ImageExtractor(Extractor):
             pass
 
         def value_for(name: str):
-            tid = tag_name.get(name)
+            # Pillow names every tag id in the ExifTags.Base enum, so a name
+            # costs one lookup. Inverting the whole 380-entry TAGS table —
+            # once per image — bought nothing.
+            tid = getattr(ExifTags.Base, name, None)
             if tid is None:
                 return None
             return ifd.get(tid, exif.get(tid))
@@ -107,11 +109,11 @@ class ImageExtractor(Extractor):
             return
         if not gps:
             return
-        names = {v: k for k, v in ExifTags.GPSTAGS.items()}
 
         def coord(value_tag: str, ref_tag: str) -> float | None:
-            dms = gps.get(names.get(value_tag, -1))
-            ref = gps.get(names.get(ref_tag, -1))
+            # Same as above, against ExifTags.GPS.
+            dms = gps.get(getattr(ExifTags.GPS, value_tag, -1))
+            ref = gps.get(getattr(ExifTags.GPS, ref_tag, -1))
             if not dms or len(dms) != 3:
                 return None
             try:

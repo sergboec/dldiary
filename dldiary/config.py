@@ -108,18 +108,25 @@ class Config:
     def blurs(self, kind: str) -> bool:
         return kind in self.blur_kinds
 
-    def blur_radius_for(self, kind: str) -> float:
-        """Gaussian radius in final pixels, or 0 when this kind is sharp.
+    @property
+    def default_blur_radius(self) -> float:
+        """Gaussian radius in final pixels, for anything blurred whole.
 
         Scaled off the thumbnail size so the effect looks the same whatever
         `--thumb-size` is: a fixed radius that erases text at 512 px would
-        barely smudge it at 1024.
+        barely smudge it at 1024. `--blur-radius` overrides it.
+
+        One definition, because a second copy of this formula lived in the
+        PDF extractor and the two could have drifted — and a blur radius
+        that drifts is a blur that stops working.
         """
-        if not self.blurs(kind):
-            return 0.0
         if self.blur_radius is not None:
             return float(self.blur_radius)
         return float(max(4, self.thumb_size // 42))
+
+    def blur_radius_for(self, kind: str) -> float:
+        """The radius this kind's previews get, or 0 when this kind is sharp."""
+        return self.default_blur_radius if self.blurs(kind) else 0.0
 
     @property
     def wants_html(self) -> bool:
@@ -246,7 +253,9 @@ def parse_args(argv: list[str] | None = None) -> Config:
         video_frames=max(0, args.video_frames),
         skip_larger_than=args.skip_larger_than,
         blur_kinds=_blur_kinds(args),
-        blur_radius=args.blur_radius,
+        # Floored at 1: on a privacy flag, "0" must not be a way to ask for
+        # a sharp preview of the thing you said to hide.
+        blur_radius=None if args.blur_radius is None else max(1, args.blur_radius),
         blur_text_below=args.blur_text_below,
         only=args.only,
         obsidian_grain=args.obsidian_grain,

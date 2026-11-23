@@ -28,6 +28,10 @@ from .manifest import (
 # Above this, the embedded payload makes the page slow to parse on open.
 PAYLOAD_WARN_BYTES = 600 * 1024
 
+# How many of each to print before summarising the rest.
+ERROR_LIMIT = 40
+WARNING_LIMIT = 20
+
 
 @dataclass
 class Problem:
@@ -340,20 +344,24 @@ def _check_viewers(data: dict, cfg: Config) -> list[Problem]:
 # -- reporting --------------------------------------------------------------
 
 
+def _print_capped(problems: list[Problem], limit: int, label: str) -> None:
+    """Print at most `limit` problems, then say how many were left out."""
+    for problem in problems[:limit]:
+        print(str(problem))
+    if len(problems) > limit:
+        print(f"  … and {len(problems) - limit} more {label}s")
+
+
 def report(problems: list[Problem], verbose: bool = False) -> int:
     """Print the findings. Returns a process exit code."""
     errors = [p for p in problems if p.level == "error"]
     warnings = [p for p in problems if p.level == "warning"]
 
-    for problem in errors[:40]:
-        print(str(problem))
-    if len(errors) > 40:
-        print(f"  … and {len(errors) - 40} more errors")
-
-    for problem in warnings[:20] if verbose or not errors else []:
-        print(str(problem))
-    if not verbose and warnings and not errors and len(warnings) > 20:
-        print(f"  … and {len(warnings) - 20} more warnings")
+    _print_capped(errors, ERROR_LIMIT, "error")
+    # Beside a real error the warnings are noise, so they are held back
+    # unless there is no error to drown them — or -v asked for everything.
+    if verbose or not errors:
+        _print_capped(warnings, WARNING_LIMIT, "warning")
 
     if errors:
         print(f"\n  {len(errors)} error(s), {len(warnings)} warning(s)")

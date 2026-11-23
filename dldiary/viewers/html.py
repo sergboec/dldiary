@@ -114,6 +114,12 @@ def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
         items.append(row)
 
     stats = manifest.build_stats()
+    # The manifest's own per-day rollup already tallies kinds, so the colour
+    # of a heatmap cell is a read of it rather than a second pass over every
+    # item. Both are settled here rather than in the browser: they are fixed
+    # properties of the data, and recomputing them on every filter change was
+    # pointless work.
+    by_day = manifest.build_by_day()
     return {
         "generatedAt": manifest.generated_at,
         "input": manifest.input,
@@ -123,33 +129,16 @@ def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
             "range": stats["date_range"],
             "duplicates": stats["duplicates"],
         },
-        "byDay": {
-            day: bucket["count"]
-            for day, bucket in manifest.build_by_day().items()
+        "byDay": {day: bucket["count"] for day, bucket in by_day.items()},
+        "dayKind": {
+            day: max(bucket["kinds"].items(), key=lambda kv: (kv[1], kv[0]))[0]
+            for day, bucket in by_day.items()
         },
-        "dayKind": _dominant_kinds(manifest),
         "kinds": stats["kinds"],
         "apps": stats["apps"],
         "domains": stats["domains"],
         "colors": {k: "#%02x%02x%02x" % v for k, v in KIND_COLORS.items()},
         "items": items,
-    }
-
-
-def _dominant_kinds(manifest: Manifest) -> dict[str, str]:
-    """The kind that best characterises each day, for heatmap colour.
-
-    Computed here rather than in the browser: it is a fixed property of the
-    data, and recomputing it on every filter change was pointless work.
-    """
-    tally: dict[str, dict[str, int]] = {}
-    for item in manifest.items:
-        if item.day:
-            tally.setdefault(item.day, {})
-            tally[item.day][item.kind] = tally[item.day].get(item.kind, 0) + 1
-    return {
-        day: max(kinds.items(), key=lambda kv: (kv[1], kv[0]))[0]
-        for day, kinds in tally.items()
     }
 
 

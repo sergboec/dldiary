@@ -126,8 +126,8 @@ class PdfExtractor(Extractor):
                 # There is nothing to measure, so the safe reading of "hide
                 # the fine print" is to hide the page.
                 item.meta["blurred_whole_page"] = "no text layer to measure"
-                img = img.filter(ImageFilter.GaussianBlur(
-                    ctx.cfg.blur_radius or max(4, ctx.thumb_size // 42)))
+                img = img.filter(
+                    ImageFilter.GaussianBlur(ctx.cfg.default_blur_radius))
                 redacted = True
             else:
                 rects = [_scale(span["bbox"], zoom)
