@@ -210,13 +210,21 @@ _SHELL = """<!DOCTYPE html>
 
 <div class="controls" id="controls">
   <div class="wrap controls-inner">
-    <input type="search" id="q" placeholder="Search names, titles, text…"
-           autocomplete="off" spellcheck="false">
-    <div class="chips" id="kindChips"></div>
-    <select id="appFilter"><option value="">any app</option></select>
-    <select id="domainFilter"><option value="">any source</option></select>
-    <button id="reset" type="button" class="ghost">Reset</button>
-    <span class="count" id="count"></span>
+    <div class="controls-bar">
+      <input type="search" id="q" placeholder="Search names, titles, text…"
+             autocomplete="off" spellcheck="false">
+      <span class="count" id="count"></span>
+      <button id="filterToggle" type="button" class="ghost toggle"
+              aria-expanded="false" aria-controls="controlsExtra">
+        Filters<span class="pill" id="activeCount" hidden></span>
+      </button>
+    </div>
+    <div class="controls-extra" id="controlsExtra">
+      <div class="chips" id="kindChips"></div>
+      <select id="appFilter"><option value="">any app</option></select>
+      <select id="domainFilter"><option value="">any source</option></select>
+      <button id="reset" type="button" class="ghost">Reset</button>
+    </div>
   </div>
 </div>
 
@@ -269,8 +277,13 @@ a{color:var(--accent)}
 .controls{
   position:sticky;top:0;z-index:30;background:rgba(21,23,26,.88);
   backdrop-filter:blur(12px);border-bottom:1px solid var(--line);
+  transition:transform .22s ease;
 }
 .controls-inner{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-block:11px}
+/* on a wide screen the two groups are scaffolding only: `display:contents`
+   drops the wrappers so their children stay flex items of one row */
+.controls-bar,.controls-extra{display:contents}
+.toggle{display:none}
 input[type=search],select,button{
   font:inherit;font-size:13px;color:var(--fg);background:var(--surface);
   border:1px solid var(--line);border-radius:7px;padding:7px 10px;
@@ -287,7 +300,12 @@ button.ghost:hover{background:var(--surface-2)}
 }
 .chip .dot{width:8px;height:8px;border-radius:50%;background:var(--c)}
 .chip[aria-pressed=true]{color:var(--fg);border-color:var(--c);background:var(--surface-2)}
-.count{margin-left:auto;color:var(--faint);font-size:12px;font-variant-numeric:tabular-nums}
+.count{margin-left:auto;color:var(--faint);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.pill{
+  margin-left:6px;min-width:17px;padding:0 5px;border-radius:999px;
+  background:var(--accent);color:#0f1217;font:600 11px/17px var(--mono);text-align:center;
+}
+.pill[hidden]{display:none}
 
 /* heatmap */
 .heatmap{padding:24px 0 4px}
@@ -326,7 +344,7 @@ button.ghost:hover{background:var(--surface-2)}
 .timeline{padding:10px 0 90px}
 .month{margin-bottom:26px;content-visibility:auto}
 .month > h2{
-  position:sticky;top:52px;z-index:20;margin:0 0 12px;padding:7px 0;display:flex;
+  position:sticky;top:var(--bar,52px);z-index:20;margin:0 0 12px;padding:7px 0;display:flex;
   gap:10px;align-items:baseline;font-size:13px;font-weight:600;letter-spacing:.07em;
   text-transform:uppercase;color:var(--dim);
   background:linear-gradient(var(--bg) 72%,transparent);
@@ -411,14 +429,32 @@ button.ghost:hover{background:var(--surface-2)}
 .empty code{font:12px var(--mono);color:var(--dim)}
 
 @media (max-width:760px){
+  .wrap{padding:0 14px}
+  .masthead{padding:26px 0 16px}
   .cards{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
   .daymark b{font-size:21px}
   .lb-body{grid-template-columns:1fr;max-height:92vh;overflow:auto}
   .lb-nav{font-size:32px}
+
+  /* a phone gets one compact row; the rest waits behind the toggle, so the
+     bar costs ~48px instead of half the viewport */
+  .controls-inner{display:block;padding-block:8px}
+  .controls-bar{display:flex;gap:8px;align-items:center}
+  .controls-extra{display:none}
+  #controls.open .controls-extra{
+    display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+    padding-top:9px;max-height:52vh;overflow-y:auto;overscroll-behavior:contain;
+  }
+  /* and it slides away when you scroll down, back when you scroll up */
+  #controls.off{transform:translateY(-100%)}
+  .toggle{display:inline-flex;align-items:center;flex:none}
+  input[type=search]{min-width:0;flex:1 1 auto}
+  .count{margin-left:0}
+  .count .word{display:none}
 }
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
-  .card{transition:none}
+  .card,.controls{transition:none}
 }
 """
 
@@ -687,8 +723,10 @@ function buildTimeline(){
   if(observer){ observer.disconnect(); observer = null; }
   host.innerHTML = '';
 
-  document.getElementById('count').textContent =
-    visible.length + ' of ' + DATA.items.length + ' shown';
+  // " shown" is its own element so a phone can drop the word and keep the numbers
+  var tally = document.getElementById('count');
+  tally.textContent = visible.length + ' / ' + DATA.items.length;
+  tally.appendChild(el('span','word',' shown'));
   document.getElementById('empty').hidden = visible.length > 0;
 
   var byMonth = {};
@@ -902,6 +940,61 @@ function paintLightbox(){
   meta.appendChild(dl);
 }
 
+/* ---------- the filter bar on a small screen ---------- */
+/* Wide: one row, always there. Narrow: a single compact row — search, tally,
+   toggle — with everything else behind the toggle, and the whole bar slides
+   out of the way as you scroll down. */
+var controls = document.getElementById('controls');
+var narrow = window.matchMedia('(max-width:760px)');
+
+/* The month headings stick *below* this bar, so they need its live height:
+   it changes when the panel opens, when the row wraps, on rotation. */
+function syncBar(){
+  var hidden = narrow.matches && controls.classList.contains('off');
+  document.documentElement.style.setProperty(
+    '--bar', (hidden ? 0 : controls.offsetHeight) + 'px');
+}
+
+function setOff(off){
+  if(controls.classList.contains('off') === off) return;
+  controls.classList.toggle('off', off);
+  syncBar();
+}
+
+function syncToggle(){
+  var n = state.kinds.size + (state.app ? 1 : 0) + (state.domain ? 1 : 0);
+  var pill = document.getElementById('activeCount');
+  pill.textContent = n;
+  pill.hidden = !n;
+}
+
+document.getElementById('filterToggle').addEventListener('click', function(){
+  var open = controls.classList.toggle('open');
+  this.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if(open) setOff(false);
+  syncBar();
+});
+
+var lastY = 0, ticking = false;
+function onScroll(){
+  var y = Math.max(0, window.scrollY || window.pageYOffset || 0);
+  // never steal the bar from an open panel, a focused field, or the top
+  var keep = !narrow.matches || controls.classList.contains('open') ||
+             controls.contains(document.activeElement) || y <= 140;
+  if(keep) setOff(false);
+  else if(y > lastY + 6) setOff(true);
+  else if(y < lastY - 6) setOff(false);
+  if(Math.abs(y - lastY) > 6) lastY = y;
+}
+window.addEventListener('scroll', function(){
+  if(ticking) return;
+  ticking = true;
+  requestAnimationFrame(function(){ onScroll(); ticking = false; });
+}, {passive:true});
+
+if(window.ResizeObserver) new ResizeObserver(syncBar).observe(controls);
+window.addEventListener('resize', syncBar);
+
 /* ---------- wiring ---------- */
 function apply(){
   visible = DATA.items.filter(matches);
@@ -911,6 +1004,7 @@ function apply(){
   });
   buildHeatmap(counts);
   buildTimeline();
+  syncToggle();
 }
 
 document.getElementById('lbClose').addEventListener('click', closeLightbox);
@@ -929,5 +1023,6 @@ document.addEventListener('keydown', function(e){
 header();
 buildControls();
 apply();
+syncBar();
 })();
 """
