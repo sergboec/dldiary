@@ -2,12 +2,12 @@
 
 This is the richest diary signal in the whole folder and it costs nothing:
 
-    com.apple.quarantine                  -> download timestamp + fetching app
+    com.apple.quarantine                  -> fetching app
     com.apple.metadata:kMDItemWhereFroms  -> the source URL(s), as a binary plist
 
 In the real Downloads folder 239 of 257 files carry quarantine data and 115
 carry a source URL. "Saved an opera ticket from a Gmail attachment, in
-Firefox, on 24 Oct" comes straight out of here with no guessing.
+Firefox" comes straight out of here with no guessing.
 
 On non-macOS, or when the `xattr` package is absent, every lookup returns
 empty and the rest of the pipeline carries on unaffected.
@@ -16,7 +16,6 @@ empty and the rest of the pipeline carries on unaffected.
 from __future__ import annotations
 
 import plistlib
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -59,36 +58,24 @@ def _read(path: Path, attr: str) -> bytes | None:
         return None
 
 
-def read_quarantine(path: Path) -> tuple[datetime | None, str | None]:
-    """`(download time, fetching app)` from the quarantine attribute.
+def read_quarantine_app(path: Path) -> str | None:
+    """Fetching app from the quarantine attribute.
 
     The value looks like `0281;6931c3ab;Firefox;<uuid>` — flags, a hex unix
     timestamp, the agent, and an event id.
     """
     raw = _read(path, QUARANTINE_ATTR)
     if not raw:
-        return None, None
+        return None
 
     try:
         parts = raw.decode("utf-8", "replace").split(";")
     except Exception:
-        return None, None
+        return None
 
-    when: datetime | None = None
-    if len(parts) > 1 and parts[1]:
-        try:
-            ts = int(parts[1], 16)
-            # Guard against nonsense: 1990-01-01 .. now + 1 day.
-            if 631152000 < ts < datetime.now().timestamp() + 86400:
-                when = datetime.fromtimestamp(ts)
-        except (ValueError, OverflowError, OSError):
-            when = None
-
-    app: str | None = None
     if len(parts) > 2 and parts[2]:
-        app = _APP_ALIASES.get(parts[2], parts[2])
-
-    return when, app
+        return _APP_ALIASES.get(parts[2], parts[2])
+    return None
 
 
 def read_where_froms(path: Path) -> list[str]:
@@ -132,7 +119,7 @@ def collect(path: Path) -> dict[str, Any]:
     Returns `{}` when nothing is known, so the key stays absent from the
     manifest rather than carrying empty strings around.
     """
-    when, app = read_quarantine(path)
+    app = read_quarantine_app(path)
     urls = read_where_froms(path)
 
     out: dict[str, Any] = {}
@@ -145,6 +132,4 @@ def collect(path: Path) -> dict[str, Any]:
             out["urls"] = urls
     if app:
         out["app"] = app
-    if when:
-        out["downloaded_at"] = when.isoformat(timespec="seconds")
     return out

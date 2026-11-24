@@ -219,7 +219,7 @@ class ViewerScaleTest(unittest.TestCase):
             .split('id="data">', 1)[1].split("</script>", 1)[0]
         )
         row = payload["items"][0]
-        for leaked in ("fingerprint", "content_key", "indexed_at"):
+        for leaked in ("fingerprint", "indexed_at"):
             self.assertNotIn(leaked, row)
 
     def test_html_is_parseable_as_strict_json(self):

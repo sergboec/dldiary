@@ -77,8 +77,6 @@ def _run_index(cfg: Config) -> bool:
     print(f"\n  {report.summary()}")
     print(f"  {stats['items']} entries · {human_size(stats['bytes'])} · "
           f"{_range(stats)}")
-    if stats["duplicates"]:
-        print(f"  {stats['duplicates']} duplicate file(s) detected")
     if stats["errors"]:
         print(f"  {stats['errors']} file(s) could not be fully read "
               f"(see \"error\" in index.json)")

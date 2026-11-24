@@ -8,7 +8,7 @@ Structure
 ---------
     {
       "generated_at": ..., "tool_version": ..., "input": ...,
-      "stats":  {...},                 # totals, date range, duplicate count
+      "stats":  {...},                 # totals, date range, kind/source counts
       "by_day": {"2026-10-24": {...}}, # precomputed, so a heatmap is free
       "items":  [ Item, ... ]
     }
@@ -87,7 +87,6 @@ class Item:
     previews: list[Preview] = field(default_factory=list)
     meta: dict[str, Any] = field(default_factory=dict)      # kind-specific
 
-    content_key: str = ""
     indexed_at: str = ""
     error: str | None = None
 
@@ -163,7 +162,6 @@ class Item:
             source=dict(d.get("source") or {}),
             previews=[Preview.from_dict(p) for p in d.get("previews") or []],
             meta=dict(d.get("meta") or {}),
-            content_key=d.get("content_key", ""),
             indexed_at=d.get("indexed_at", ""),
             error=d.get("error"),
         )
@@ -184,14 +182,6 @@ class Manifest:
         )
 
     # -- derived aggregates ------------------------------------------------
-
-    def duplicate_groups(self) -> list[list[Item]]:
-        """Items sharing a content_key, as groups of two or more."""
-        groups: dict[str, list[Item]] = {}
-        for it in self.items:
-            if it.content_key:
-                groups.setdefault(it.content_key, []).append(it)
-        return [g for g in groups.values() if len(g) > 1]
 
     def build_by_day(self) -> dict[str, dict[str, Any]]:
         """Per-day rollup — the HTML heatmap reads this directly."""
@@ -215,7 +205,6 @@ class Manifest:
             "previews": sum(len(i.previews) for i in self.items),
             "bytes": sum(i.size for i in self.items),
             "date_range": [days[0], days[-1]] if days else [],
-            "duplicates": sum(len(g) - 1 for g in self.duplicate_groups()),
             "errors": sum(1 for i in self.items if i.error),
             "kinds": _count_by(i.kind for i in self.items),
             "apps": _count_by(

@@ -41,7 +41,7 @@ Versions are pinned exactly. Pillow is required; the rest degrade gracefully
 | `pillow==12.3.0` | images, thumbnails, text cards — **required** |
 | `pymupdf==1.28.2` | PDF page rendering, text and metadata; also SVG and EPUB |
 | `av==17.1.0` | video frames and container metadata, via libav |
-| `xattr==1.3.1` | macOS download date, source app and source URL |
+| `xattr==1.3.1` | macOS source app and source URL |
 | `mutagen==1.48.1` | audio tags and embedded cover art |
 
 No command-line tools are used — no ffmpeg, sips, qlmanage or exiftool.
@@ -203,8 +203,8 @@ anything. A screenshot taken in 2019 and re-saved today is, for a diary about
 a downloads folder, a file that arrived today. One source of truth, no guess
 to audit.
 
-The download timestamp is still read from `com.apple.quarantine` and kept as
-`source.downloaded_at`; it is provenance, not the anchor.
+The quarantine attribute is still useful for the fetching app; its timestamp
+is ignored for the same reason as the other date candidates.
 
 ---
 
@@ -221,8 +221,9 @@ The download timestamp is still read from `com.apple.quarantine` and kept as
 - Filter by kind, source app, source domain, or free text over names and extracted text
 - Click any card for a lightbox with every preview, full metadata and a `file://` link to the original
 
-The page embeds a *view model*, not the manifest: no content hashes,
-rejected date candidates or absolute paths, since it draws none of them. For 257 entries that is the difference between 1.7 MB and 0.28 MB.
+The page embeds a *view model*, not the manifest: no rejected date candidates
+or other extractor bookkeeping, since it draws none of them. For 257 entries
+that is the difference between 1.7 MB and 0.28 MB.
 
 ### Obsidian
 
@@ -300,8 +301,8 @@ If you add an extractor, add its pathological case there.
 ```
 dldiary/
   manifest.py      index.json — contract, caps, sanitizing, atomic save
-  scan.py          top-level walk, stable ids, dates, duplicate keys
-  provenance.py    xattr → download date, source app, source URL
+  scan.py          top-level walk, stable ids and dates
+  provenance.py    xattr → source app and source URL
   thumbs.py        Pillow resize/encode and the card renderer
   indexer.py       the pass that ties it together
   extractors/      one module per file kind, failures isolated

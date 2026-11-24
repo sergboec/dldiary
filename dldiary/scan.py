@@ -21,10 +21,6 @@ _SKIP_NAMES = {".DS_Store", ".localized", "Icon\r", ".dropbox", "desktop.ini"}
 # A partially downloaded file is not yet an event.
 _SKIP_SUFFIXES = (".part", ".crdownload", ".download", ".tmp", ".partial", "~")
 
-# For content_key: hash the head and tail only, so a 6 GB movie costs two reads.
-_HASH_WINDOW = 1024 * 1024
-
-
 def should_skip(path: Path) -> bool:
     name = path.name
     if name in _SKIP_NAMES or name.startswith("."):
@@ -40,21 +36,6 @@ def stable_id(name: str, size: int, birthtime: float) -> str:
     """
     seed = f"{name}\x00{size}\x00{birthtime:.0f}"
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
-
-
-def content_key(path: Path, size: int) -> str:
-    """`"<size>:<sha256 of head+tail>"`, for spotting duplicates cheaply."""
-    h = hashlib.sha256()
-    h.update(str(size).encode())
-    try:
-        with path.open("rb") as fh:
-            h.update(fh.read(_HASH_WINDOW))
-            if size > _HASH_WINDOW * 2:
-                fh.seek(-_HASH_WINDOW, os.SEEK_END)
-                h.update(fh.read(_HASH_WINDOW))
-    except OSError:
-        return ""
-    return f"{size}:{h.hexdigest()[:32]}"
 
 
 def birthtime_of(st: os.stat_result) -> float:
@@ -102,7 +83,5 @@ def scan(input_dir: Path, *, skip_larger_than: int | None = None) -> Iterator[It
         # Oversized files are still diary entries; they just skip extraction.
         if skip_larger_than is not None and size > skip_larger_than:
             item.meta["skipped_extraction"] = "larger than --skip-larger-than"
-        else:
-            item.content_key = content_key(path, size)
 
         yield item

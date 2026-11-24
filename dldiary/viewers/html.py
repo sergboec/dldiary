@@ -48,11 +48,10 @@ def render(manifest: Manifest, cfg: Config) -> Path:
 def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
     """The view model: only what the page actually draws.
 
-    Deliberately not the manifest. The manifest carries content hashes and
-    absolute source paths — neither of which this page renders, and both of
-    which it used to embed. Emitting
-    a projection instead took the page from 1.7 MB to a third of that, and
-    keeps a change to the manifest from silently changing the page's weight.
+    Deliberately not the manifest. The manifest carries extractor bookkeeping
+    and raw source fields this page does not draw. Emitting a projection instead
+    took the page from 1.7 MB to a third of that, and keeps a change to the
+    manifest from silently changing the page's weight.
     """
     referenced = [p.path for item in manifest.items for p in item.previews]
 
@@ -120,7 +119,6 @@ def _payload(manifest: Manifest, cfg: Config, html_dir: Path) -> dict:
             "items": stats["items"],
             "bytesh": human_size(stats["bytes"]),
             "range": stats["date_range"],
-            "duplicates": stats["duplicates"],
         },
         "byDay": {day: bucket["count"] for day, bucket in by_day.items()},
         "dayKind": {
@@ -450,7 +448,7 @@ try {
   document.querySelector('main').innerHTML =
     '<p class="empty">This page could not read its own data:<br><br><code>' +
     String(err.message).replace(/[<>&]/g, '') +
-    '</code><br><br>Run <code>dldiary check</code> to find the bad entry.</p>';
+    '</code><br><br>Re-render the page after fixing <code>index.json</code>.</p>';
   throw err;
 }
 
@@ -503,7 +501,6 @@ function header(){
   if(s.range && s.range.length === 2){
     bits.push(s.range[0] === s.range[1] ? s.range[0] : s.range[0] + ' – ' + s.range[1]);
   }
-  if(s.duplicates) bits.push(s.duplicates + ' duplicate' + (s.duplicates > 1 ? 's' : ''));
   document.getElementById('lede').innerHTML = bits.join(' &nbsp;·&nbsp; ');
 }
 

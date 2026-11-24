@@ -48,7 +48,7 @@ def index(cfg: Config) -> tuple[Manifest, IndexReport]:
     report = IndexReport()
 
     if not provenance.available():
-        print("  ! xattr unavailable — no download dates or source URLs",
+        print("  ! xattr unavailable — no source apps or URLs",
               file=sys.stderr)
 
     registry = extractors.build_registry()
