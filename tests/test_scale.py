@@ -59,7 +59,6 @@ def synthetic_manifest(n: int = N_ITEMS, *, hostile: bool = True) -> Manifest:
             name=f"file-{i:04d}.pdf",
             ext="pdf",
             kind="pdf",
-            mime="application/pdf",
             size=1000 + i,
             src_path=f"/synthetic/file-{i:04d}.pdf",
             date=when.isoformat(timespec="seconds"),
@@ -89,7 +88,7 @@ def synthetic_manifest(n: int = N_ITEMS, *, hostile: bool = True) -> Manifest:
             (("png", "image"), ("omr", "other"), ("PNG", "image"))):
         twin = Item(
             id=f"twin{n}", name=f"beatles.{ext}", ext=ext.lower(),
-            kind=kind, mime="application/octet-stream", size=4096,
+            kind=kind, size=4096,
             src_path=f"/synthetic/beatles.{ext}", date=day,
             title="beatles",
         )
@@ -196,7 +195,7 @@ class ViewerScaleTest(unittest.TestCase):
         for i in range(2):
             manifest.items.append(Item(
                 id=f"id{i}", name="same.pdf", ext="pdf", kind="pdf",
-                mime="application/pdf", size=1, src_path=f"/x/{i}/same.pdf",
+                size=1, src_path=f"/x/{i}/same.pdf",
                 date="2026-01-01T00:00:00",
             ))
         # Identical day, name and extension: only the id separates them.
@@ -220,8 +219,7 @@ class ViewerScaleTest(unittest.TestCase):
             .split('id="data">', 1)[1].split("</script>", 1)[0]
         )
         row = payload["items"][0]
-        for leaked in ("fingerprint", "content_key",
-                       "indexed_at", "mime"):
+        for leaked in ("fingerprint", "content_key", "indexed_at"):
             self.assertNotIn(leaked, row)
 
     def test_html_is_parseable_as_strict_json(self):
@@ -237,7 +235,7 @@ class ViewerScaleTest(unittest.TestCase):
         manifest = Manifest(input="/x")
         manifest.items.append(Item(
             id="xss", name="</script><script>alert(1)</script>.pdf",
-            ext="pdf", kind="pdf", mime="application/pdf", size=1,
+            ext="pdf", kind="pdf", size=1,
             src_path="/x/a.pdf", date="2026-01-01T00:00:00",
             summary="</script>",
         ))

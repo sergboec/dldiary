@@ -1,13 +1,13 @@
 """The manifest — `index.json`.
 
 This is the single point of entry for everything downstream. The indexer writes
-it; every viewer reads it and nothing else. Keep it plain JSON, plainly typed,
-and stable: a viewer written against schema 1 should keep working.
+it; every viewer reads it and nothing else. Keep it plain JSON and plainly
+typed.
 
 Structure
 ---------
     {
-      "schema": 1, "generated_at": ..., "tool_version": ..., "input": ...,
+      "generated_at": ..., "tool_version": ..., "input": ...,
       "stats":  {...},                 # totals, date range, duplicate count
       "by_day": {"2026-10-24": {...}}, # precomputed, so a heatmap is free
       "items":  [ Item, ... ]
@@ -23,7 +23,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from . import SCHEMA_VERSION, __version__
+from . import __version__
 
 PREVIEW_ROLES = ("poster", "page", "frame", "cover", "card")
 
@@ -75,7 +75,6 @@ class Item:
     name: str
     ext: str
     kind: str
-    mime: str
     size: int
     src_path: str
 
@@ -156,7 +155,6 @@ class Item:
             name=d["name"],
             ext=d.get("ext", ""),
             kind=d.get("kind", "other"),
-            mime=d.get("mime", ""),
             size=int(d.get("size", 0)),
             src_path=d.get("src_path", ""),
             date=d.get("date", ""),
@@ -179,12 +177,6 @@ class Manifest:
     items: list[Item] = field(default_factory=list)
     generated_at: str = ""
     tool_version: str = __version__
-    schema: int = SCHEMA_VERSION
-
-    # -- lookup ------------------------------------------------------------
-
-    def by_id(self) -> dict[str, Item]:
-        return {it.id: it for it in self.items}
 
     def sorted_items(self, newest_first: bool = True) -> list[Item]:
         return sorted(
@@ -238,7 +230,6 @@ class Manifest:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema": self.schema,
             "generated_at": self.generated_at or datetime.now().isoformat(timespec="seconds"),
             "tool_version": self.tool_version,
             "input": self.input,
@@ -249,18 +240,11 @@ class Manifest:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Manifest":
-        schema = int(d.get("schema", 0))
-        if schema > SCHEMA_VERSION:
-            raise ValueError(
-                f"index.json is schema {schema}, but this tool understands "
-                f"up to {SCHEMA_VERSION}. Upgrade the tool, or re-index."
-            )
         return cls(
             input=d.get("input", ""),
             items=[Item.from_dict(i) for i in d.get("items") or []],
             generated_at=d.get("generated_at", ""),
             tool_version=d.get("tool_version", ""),
-            schema=schema or SCHEMA_VERSION,
         )
 
 

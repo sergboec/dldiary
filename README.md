@@ -280,7 +280,7 @@ the same run has just written.
 ```
 
 **`test_smoke.py`** — 30 integration tests against the eight real files in
-`downloads_test/`: extraction, dates, provenance, the manifest schema,
+`downloads_test/`: extraction, dates, provenance, the manifest contract,
 both viewers. It asserts that the input folder is byte-for-byte
 unchanged by a run and that the ZIP is never extracted.
 
@@ -299,7 +299,7 @@ If you add an extractor, add its pathological case there.
 
 ```
 dldiary/
-  manifest.py      index.json — schema, caps, sanitizing, atomic save
+  manifest.py      index.json — contract, caps, sanitizing, atomic save
   scan.py          top-level walk, stable ids, dates, duplicate keys
   provenance.py    xattr → download date, source app, source URL
   thumbs.py        Pillow resize/encode and the card renderer

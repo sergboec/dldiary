@@ -24,7 +24,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from dldiary import SCHEMA_VERSION                          # noqa: E402
 from dldiary import manifest as manifest_io                 # noqa: E402
 from dldiary.config import Config, human_size, parse_size   # noqa: E402
 from dldiary.extractors.base import looks_like_prose        # noqa: E402
@@ -238,9 +237,8 @@ class TestRepeatability(CorpusTestCase):
 
 class TestManifestShape(CorpusTestCase):
 
-    def test_schema_and_aggregates(self):
+    def test_manifest_aggregates(self):
         data = json.loads(self.cfg.manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["schema"], SCHEMA_VERSION)
         self.assertEqual(data["stats"]["items"], EXPECTED_FILES)
 
         # Days are mtime days. `31-10-2026--Ticket-...pdf` lands on the 26th,

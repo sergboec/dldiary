@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 
-from .kinds import kind_for_ext, mime_for_ext
+from .kinds import kind_for_ext
 from .manifest import Item
 
 # Noise that is never a diary entry.
@@ -93,7 +93,6 @@ def scan(input_dir: Path, *, skip_larger_than: int | None = None) -> Iterator[It
             name=path.name,
             ext=ext,
             kind=kind_for_ext(ext),
-            mime=mime_for_ext(ext),
             size=size,
             src_path=str(path),
             date=datetime.fromtimestamp(st.st_mtime).isoformat(timespec="seconds"),
